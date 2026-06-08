@@ -1,0 +1,468 @@
+// Entertain Passport — Prisma schema
+// Database: Supabase PostgreSQL.
+// DATABASE_URL  -> pooled connection (PgBouncer, port 6543) used at runtime.
+// DIRECT_URL    -> direct connection (port 5432) used for migrations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ----- Auth & Users -----------------------------------------------------------
+
+// Profile row. `id` mirrors Supabase auth.users.id (uuid as text).
+// Rows are created automatically by the on_auth_user_created trigger.
+model User {
+  id            String   @id // == auth.users.id
+  email         String   @unique
+  phone         String?  @unique
+  name          String?
+  avatarUrl     String?
+  role          String   @default("CUSTOMER") // CUSTOMER | SUPER_ADMIN | ORGANIZER | ARTIST_MANAGER | ARTIST | BUSINESS_OWNER | GATE_STAFF
+  loyaltyPoints Int      @default(0)
+
+  // Optional profile details. Collected after signup (skippable) and required
+  // to unlock loyalty rewards & offers (see profileIsComplete()).
+  gender        String?   // MALE | FEMALE | OTHER | PREFER_NOT_TO_SAY
+  birthday      DateTime?
+  idType        String?   // NIC | PASSPORT
+  idNumber      String?   // NIC / Passport number for loyalty program
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  addresses          Address[]
+  orders             Order[]
+  loyaltyLedger      LoyaltyEntry[]
+  cart               Cart?
+  auditLogs          AuditLog[]
+  ownedOrganizations Organization[]       @relation("OrgOwner")
+  orgMemberships     OrganizationMember[]
+  eventStaff         EventStaff[]
+  reviewedEvents     Event[]              @relation("EventReviewer")
+  approvalActions    EventApprovalLog[]
+  checkIns           Ticket[]             @relation("TicketChecker")
+  heldTickets        Ticket[]             @relation("TicketHolder")
+  passports          RfidCard[]           @relation("UserPassports")
+  programmedCards    RfidCard[]           @relation("PassportProgrammer")
+}
+
+model Address {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  line1    String
+  line2    String?
+  city     String  // town / city
+  district String?
+  province String?
+  state    String?
+  country  String  @default("Sri Lanka")
+  zip      String?
+  isPrimary Boolean @default(true)
+}
+
+// ----- Organizations (Organizer / Artist Manager / Business Owner) --------------
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  type        String   // ORGANIZER | ARTIST_MANAGER | BUSINESS_OWNER (same portal access)
+  description String?
+  logoUrl     String?
+  website     String?
+  phone       String?
+  isVerified  Boolean  @default(false)
+  // Per-organization commission override set by Super Admin. When null the
+  // platform default (PlatformSettings.defaultCommissionPct) applies.
+  commissionPct Float?
+  ownerId     String
+  owner       User     @relation("OrgOwner", fields: [ownerId], references: [id])
+  members     OrganizationMember[]
+  events      Event[]
+  artistEvents EventArtist[] @relation("ArtistEvents")
+  venues      Venue[]          @relation("OrgVenues")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       // OWNER | ADMIN | WORKER (org-level; event staff is separate)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+}
+
+// ----- Catalog ----------------------------------------------------------------
+
+model Category {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  slug      String     @unique
+  iconKey   String?
+  imageUrl  String?
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  events    Event[]
+  createdAt DateTime   @default(now())
+}
+
+model Venue {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String?     @unique
+  description String?
+  kind        String?     // PUB | RESTAURANT | CLUB | LOUNGE | OTHER
+  address     String      // address line 1
+  line2       String?     // address line 2
+  city        String      // town / city
+  district    String?
+  province    String?
+  country     String      @default("Sri Lanka")
+  mapUrl      String?     // optional Google Maps location link
+  lat         Float?
+  lng         Float?
+  capacity    Int         @default(0)
+  hasSeating  Boolean     @default(false)
+  layoutJson  String?
+  coverImageUrl String?
+  phone       String?
+  website     String?
+  openingHoursJson String?
+  isPublished Boolean     @default(false)
+  organizationId String?
+  organization   Organization? @relation("OrgVenues", fields: [organizationId], references: [id], onDelete: SetNull)
+  events      Event[]
+  seatPrices  SeatPrice[]
+  programs    VenueProgram[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @default(now()) @updatedAt
+
+  @@index([isPublished, organizationId])
+  @@index([kind, city])
+}
+
+// Non-ticketed weekly or one-off happenings at a venue (live bands, DJ nights, etc.).
+model VenueProgram {
+  id            String   @id @default(cuid())
+  venueId       String
+  venue         Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  performerName String?
+  actType       String   // SOLO | TRIO | FULL_BAND | DJ | OTHER
+  recurrence    String   // WEEKLY | ONE_OFF
+  dayOfWeek     Int?     // 0=Sun … 6=Sat when recurrence=WEEKLY
+  specificDate  DateTime?
+  startTime     String   // HH:mm
+  endTime       String?
+  isPublished   Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([venueId, dayOfWeek])
+}
+
+model SeatPrice {
+  id      String @id @default(cuid())
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  section String
+  tier    String
+  price   Int
+}
+
+model Event {
+  id                 String   @id @default(cuid())
+  title              String
+  slug               String   @unique
+  shortDescription   String?
+  description        String
+  status             String   @default("DRAFT") // DRAFT | PUBLISHED | SOLD_OUT | CANCELLED | ENDED
+  approvalStatus     String   @default("DRAFT") // DRAFT | PENDING_REVIEW | APPROVED | REJECTED | CHANGES_REQUESTED
+  startsAt           DateTime
+  endsAt             DateTime
+  doorsOpenAt        DateTime?
+  termsAndConditions String?
+  socialLinksJson    String?
+  currency           String   @default("LKR")
+  commissionPct      Float    @default(5) // editable only by Super Admin
+  salesThreshold     Int?
+  featured           Boolean  @default(false)
+  submittedAt        DateTime?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  reviewedById       String?
+  reviewedBy         User?    @relation("EventReviewer", fields: [reviewedById], references: [id])
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  venueId String
+  venue   Venue  @relation(fields: [venueId], references: [id])
+
+  primaryImageId String?     @unique
+  primaryImage   EventImage? @relation("PrimaryImage", fields: [primaryImageId], references: [id])
+
+  images         EventImage[]       @relation("EventImages")
+  packages       TicketPackage[]
+  partners       EventPartner[]
+  orderItems     OrderItem[]
+  alerts         AdminAlert[]
+  staff          EventStaff[]
+  approvalLogs   EventApprovalLog[]
+  artists        EventArtist[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, approvalStatus, startsAt])
+  @@index([status, approvalStatus, featured])
+  @@index([categoryId])
+  @@index([organizationId])
+}
+
+model EventApprovalLog {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  fromStatus String
+  toStatus   String
+  note       String?
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model EventStaff {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String   // SCANNER | DOOR_MANAGER | EVENT_MANAGER
+  isBillable Boolean  @default(false) // true when beyond 2 free staff per event
+  createdAt  DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model EventImage {
+  id        String  @id @default(cuid())
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+  eventId   String?
+  event     Event?  @relation("EventImages", fields: [eventId], references: [id], onDelete: Cascade)
+  primaryOf Event?  @relation("PrimaryImage")
+}
+
+model EventPartner {
+  id      String  @id @default(cuid())
+  eventId String
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name    String
+  logoUrl String?
+  link    String?
+  tier    String?
+}
+
+model TicketPackage {
+  id          String      @id @default(cuid())
+  eventId     String
+  event       Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Int
+  qtyTotal    Int
+  qtySold     Int         @default(0)
+  perksJson   String?
+  sortOrder   Int         @default(0)
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+
+  @@index([eventId])
+}
+
+// ----- Cart & Orders ----------------------------------------------------------
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String     @default("ACTIVE")
+  items     CartItem[]
+  expiresAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String        @id @default(cuid())
+  cartId    String
+  cart      Cart          @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  packageId String
+  package   TicketPackage @relation(fields: [packageId], references: [id])
+  qty       Int
+  seatIds   String?
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  status        String      @default("PENDING")
+  subtotal      Int
+  fees          Int
+  commissionAmt Int
+  total         Int
+  currency      String      @default("LKR")
+  paymentRef    String?
+  loyaltyEarned Int         @default(0)
+  loyaltySpent  Int         @default(0)
+  items         OrderItem[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model OrderItem {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  eventId   String
+  event     Event         @relation(fields: [eventId], references: [id])
+  packageId String
+  package   TicketPackage @relation(fields: [packageId], references: [id])
+  qty       Int
+  unitPrice Int
+  seatIds   String?
+  tickets   Ticket[]
+}
+
+model Ticket {
+  id           String    @id @default(cuid())
+  orderItemId  String
+  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  barcode      String    @unique // internal unique code (legacy; we check in via NFC/RFID now)
+  qrCode       String    @unique // legacy alias / full payload token
+  // Human-friendly / printed identifier an organizer can set & print on a ticket
+  // so gate staff can check in by typing it. Optional and unique when present.
+  ticketCode   String?   @unique
+  status       String    @default("VALID") // VALID | CHECKED_IN | REFUNDED | CANCELLED
+  checkedInAt  DateTime?
+  checkedInById String?
+  checkedInBy  User?     @relation("TicketChecker", fields: [checkedInById], references: [id])
+
+  // NFC/RFID "Entertain Passport" linked to this ticket (tap to check in).
+  rfidCardId   String?
+  rfidCard     RfidCard? @relation(fields: [rfidCardId], references: [id], onDelete: SetNull)
+
+  // The actual attendee for this ticket. Bulk buyers with a passport can assign
+  // each ticket to a friend by their account, NIC or passport number.
+  holderUserId String?
+  holder       User?     @relation("TicketHolder", fields: [holderUserId], references: [id], onDelete: SetNull)
+  holderName   String?
+  holderNic    String?
+
+  createdAt    DateTime  @default(now())
+
+  @@index([rfidCardId])
+  @@index([holderUserId])
+}
+
+// ----- NFC/RFID "Entertain Passport" cards ------------------------------------
+
+model RfidCard {
+  id             String    @id @default(cuid())
+  uid            String    @unique // raw NFC/RFID chip UID programmed by Super Admin
+  passportNo     String    @unique // human-friendly Entertain Passport number
+  label          String?
+  status         String    @default("UNASSIGNED") // UNASSIGNED | ACTIVE | BLOCKED | LOST
+  assignedUserId String?
+  assignedUser   User?     @relation("UserPassports", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt     DateTime?
+  programmedById String?
+  programmedBy   User?     @relation("PassportProgrammer", fields: [programmedById], references: [id], onDelete: SetNull)
+  tickets        Ticket[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([assignedUserId])
+  @@index([assignedUserId, status])
+}
+
+// ----- Artist tagging on events ----------------------------------------------
+
+model EventArtist {
+  id             String       @id @default(cuid())
+  eventId        String
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation("ArtistEvents", fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([eventId, organizationId])
+  @@index([organizationId])
+}
+
+// ----- Loyalty ----------------------------------------------------------------
+
+model LoyaltyEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta     Int
+  reason    String
+  refId     String?
+  createdAt DateTime @default(now())
+}
+
+// ----- Admin / Ops ------------------------------------------------------------
+
+model AdminAlert {
+  id             String    @id @default(cuid())
+  eventId        String
+  event          Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  thresholdType  String
+  thresholdValue Int
+  channel        String    @default("email")
+  lastFiredAt    DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  diffJson  String?
+  createdAt DateTime @default(now())
+}
+
+model PlatformSettings {
+  id                    String @id @default("default")
+  defaultCommissionPct  Float  @default(5)
+  freeStaffPerEvent     Int    @default(2)
+  extraStaffMonthlyFee  Int    @default(1500) // cents per extra staff slot
+  updatedAt             DateTime @updatedAt
+}
