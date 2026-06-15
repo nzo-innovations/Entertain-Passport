@@ -1,0 +1,204 @@
+// ============================================================
+// Entertain Passport — VERIFICATION PLANE schema (ISOLATED)
+// ============================================================
+// This schema is deployed to a SEPARATE database from the core app
+// (decision lock: docs/VERIFICATION_API.md §12 — "separate DB now").
+//
+//   * It holds NO sales / orders / events / financial data.
+//   * PII is stored only as salted+peppered hashes (never plaintext).
+//   * The runtime DB role (VERIFY_DATABASE_URL) must have privileges ONLY on
+//     this database — never on the core `public` schema. Even a full RCE on the
+//     partner edge cannot reach revenue data.
+//
+// Generated to src/generated/verify-client and consumed via @/lib/verify-db.
+// Generate:  npm run db:generate:verify
+// Push:      npm run db:push:verify
+generator verifyClient {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/verify-client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("VERIFY_DATABASE_URL")
+  directUrl = env("VERIFY_DIRECT_URL")
+}
+
+// ----- Identity projection (one-way sync target from core RfidCard) -----------
+// The ONLY user data the partner edge can read. Populated by the core app's
+// one-way sync on card assign / block / lost / update. No FK back to core.
+model VerifIdentity {
+  id          String   @id @default(cuid())
+  passportNo  String   @unique // EP-XXXX-XXXX (public, low-sensitivity handle)
+  cardUidHash String   @unique // HMAC(uid, pepper) — raw chip UID never stored
+  status      String   @default("UNASSIGNED") // ACTIVE | BLOCKED | LOST | UNASSIGNED
+  nameHash    String? // salted+peppered hash, never plaintext
+  nicHash     String?
+  mobileHash  String?
+  // Optional human label for Super-Admin monitoring ONLY — never returned to a
+  // partner under the tap-only / verdict-only contract.
+  adminLabel  String?
+  syncedAt    DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  cardKey VerifCardKey?
+
+  @@index([status])
+}
+
+// ----- DESFire EV2/EV3 per-card key custody -----------------------------------
+// Master key lives in the KMS (VERIFY_KMS_PROVIDER). Per-card data key is wrapped
+// (envelope-encrypted) by the master key; we store only the wrapped blob + the
+// KMS key reference + version, so rotation never loses the ability to decrypt
+// older cards. Diversifier binds the key to the specific chip UID.
+model VerifCardKey {
+  id             String   @id @default(cuid())
+  passportNo     String   @unique
+  identity       VerifIdentity @relation(fields: [passportNo], references: [passportNo], onDelete: Cascade)
+  kmsKeyId       String // KMS master key reference (e.g. "ep-card-master")
+  keyVersion     Int      @default(1)
+  wrappedDataKey String // base64 envelope-encrypted per-card data key
+  diversifierHash String  // HMAC(uid) used as DESFire key-diversification input
+  rotatedAt      DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([kmsKeyId, keyVersion])
+}
+
+// ----- Pricing plans (Super-Admin managed) ------------------------------------
+// Default plan limits. A Partner may individually override any of these
+// (see Partner.override* fields) — overrides win, else the plan value applies.
+model VerifPlan {
+  id                  String    @id @default(cuid())
+  code                String    @unique // PAYG | STARTER | PRO | ENTERPRISE
+  name                String
+  currency            String    @default("LKR")
+  unitPriceMinor      Int       @default(0) // price per successful verification (minor units)
+  monthlyQuota        Int? // null = unlimited
+  rateLimitRpm        Int       @default(120)
+  includedAllowance   Int       @default(0) // free verifications/month before unit price applies
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  partners            Partner[]
+}
+
+// ----- Partner (a third-party platform consuming the API) ---------------------
+model Partner {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  status       String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  legalEntity  String?
+  contactEmail String?
+
+  planId String?
+  plan   VerifPlan? @relation(fields: [planId], references: [id])
+
+  // Per-partner overrides (Super-Admin only). null => inherit from plan.
+  overrideUnitPriceMinor Int?
+  overrideMonthlyQuota   Int?
+  overrideRateLimitRpm   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  apiClients ApiClient[]
+  consents   PartnerConsent[]
+  usage      UsageCounter[]
+  logs       ApiRequestLog[]
+
+  @@index([status])
+}
+
+// ----- Issued API credential --------------------------------------------------
+// secretHash = scrypt hash of the signing secret; the secret is shown ONCE at
+// issuance and never stored in the clear.
+model ApiClient {
+  id           String    @id @default(cuid())
+  partnerId    String
+  partner      Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  label        String?
+  keyId        String    @unique // public identifier, e.g. pk_live_xxx
+  secretEnc    String // signing secret, envelope-encrypted at rest (KMS-wrapped)
+  scopesJson   String    @default("[\"verify:tap\"]")
+  ipAllowlist  String? // comma-separated CIDRs; null = any
+  rateLimitRpm Int? // per-client override; null => partner/plan
+  status       String    @default("ACTIVE") // ACTIVE | REVOKED
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+
+  @@index([partnerId, status])
+}
+
+// ----- Data-sharing / consent (what may be returned, under what legal basis) --
+// Under the locked contract the API returns ONLY validation status — no identity
+// fields. This row records the accepted terms version, the legal basis, and the
+// exact set of shared fields agreed with the partner.
+model PartnerConsent {
+  id              String   @id @default(cuid())
+  partnerId       String
+  partner         Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  termsVersion    String // e.g. "2026-06-v1"
+  sharedFieldsJson String  @default("[\"validation_status\"]")
+  legalBasis      String   @default("CONTRACT") // CONTRACT | CONSENT | LEGITIMATE_INTEREST
+  status          String   @default("ACTIVE") // ACTIVE | WITHDRAWN
+  acceptedByName  String?
+  acceptedAt      DateTime @default(now())
+  withdrawnAt     DateTime?
+
+  @@index([partnerId, status])
+}
+
+// ----- Per-call audit log (Super-Admin monitoring backbone) -------------------
+model ApiRequestLog {
+  id          String   @id @default(cuid())
+  apiClientId String?
+  partnerId   String?
+  partner     Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  endpoint    String
+  mode        String   @default("TAP") // TAP only (locked)
+  verdict     String // VALID | INVALID | NOT_FOUND | BLOCKED | DENIED | ERROR
+  httpStatus  Int
+  latencyMs   Int
+  ip          String?
+  sigValid    Boolean  @default(false)
+  billable    Boolean  @default(false)
+  priceMinor  Int      @default(0)
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([apiClientId, createdAt])
+  @@index([partnerId, createdAt])
+  @@index([verdict, createdAt])
+}
+
+// ----- Monthly usage rollup (billing) -----------------------------------------
+model UsageCounter {
+  id            String  @id @default(cuid())
+  partnerId     String
+  partner       Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  apiClientId   String
+  period        String // "2026-06"
+  count         Int     @default(0) // all requests
+  billableCount Int     @default(0) // successful, charged verifications
+  amountMinor   Int     @default(0)
+  currency      String  @default("LKR")
+  updatedAt     DateTime @updatedAt
+
+  @@unique([apiClientId, period])
+  @@index([partnerId, period])
+}
+
+// ----- Replay protection: seen nonces within the HMAC skew window -------------
+model ApiNonce {
+  id        String   @id @default(cuid())
+  keyId     String
+  nonce     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([keyId, nonce])
+  @@index([expiresAt])
+}

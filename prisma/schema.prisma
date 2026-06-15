@@ -50,6 +50,7 @@ model User {
   heldTickets        Ticket[]             @relation("TicketHolder")
   passports          RfidCard[]           @relation("UserPassports")
   programmedCards    RfidCard[]           @relation("PassportProgrammer")
+  soldPhysicalTickets PhysicalTicket[]    @relation("PhysicalTicketSeller")
 }
 
 model Address {
@@ -202,6 +203,13 @@ model Event {
   commissionPct      Float    @default(5) // editable only by Super Admin
   salesThreshold     Int?
   featured           Boolean  @default(false)
+
+  // ----- Physical (printed) ticket management -----
+  // When enabled, every ticket category must have a matching number of
+  // physical ticket reference codes before the event can be published.
+  physicalTicketsEnabled Boolean @default(false)
+  physicalCodeLength     Int?    // fixed length of each printed ref code
+  physicalCodeCharset    String  @default("NUMERIC") // NUMERIC | ALPHANUMERIC
   submittedAt        DateTime?
   reviewedAt         DateTime?
   reviewNote         String?
@@ -228,6 +236,7 @@ model Event {
   staff          EventStaff[]
   approvalLogs   EventApprovalLog[]
   artists        EventArtist[]
+  physicalTickets PhysicalTicket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -296,8 +305,33 @@ model TicketPackage {
   sortOrder   Int         @default(0)
   cartItems   CartItem[]
   orderItems  OrderItem[]
+  physicalTickets PhysicalTicket[]
 
   @@index([eventId])
+}
+
+// ----- Physical (printed) tickets ---------------------------------------------
+// Inventory of pre-printed ticket reference codes. One row per printed code,
+// owned by a ticket category (TicketPackage). Sold offline via an explicit
+// manual action by an organizer, gate staff member, or Super Admin.
+model PhysicalTicket {
+  id         String        @id @default(cuid())
+  eventId    String
+  event      Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  packageId  String
+  package    TicketPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  refCode    String        // printed reference code (unique within the event)
+  status     String        @default("AVAILABLE") // AVAILABLE | SOLD | VOID
+  soldAt     DateTime?
+  soldById   String?
+  soldBy     User?         @relation("PhysicalTicketSeller", fields: [soldById], references: [id], onDelete: SetNull)
+  note       String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([eventId, refCode])
+  @@index([packageId, status])
+  @@index([eventId, status])
 }
 
 // ----- Cart & Orders ----------------------------------------------------------

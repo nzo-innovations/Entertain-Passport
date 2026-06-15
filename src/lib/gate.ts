@@ -44,7 +44,7 @@ export async function findTicketByCode(eventId: string, rawCode: string) {
     orderItem: {
       include: {
         event: { select: { id: true, title: true } },
-        package: { select: { name: true } },
+        package: { select: { id: true, name: true } },
         order: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
@@ -69,7 +69,14 @@ export async function findTicketByCode(eventId: string, rawCode: string) {
   });
   if (ticket) return ticket;
 
-  // 3) NFC/RFID Entertain Passport: chip UID or passport number -> a VALID ticket
+  // 3) Holder NIC/passport number typed at the gate.
+  ticket = await db.ticket.findFirst({
+    where: { holderNic: { equals: code, mode: "insensitive" }, orderItem: { eventId }, status: TicketStatus.VALID },
+    include,
+  });
+  if (ticket) return ticket;
+
+  // 4) NFC/RFID Entertain Passport: chip UID or passport number -> a VALID ticket
   //    linked to that card for this event (fall back to any of its tickets).
   const card = await db.rfidCard.findFirst({
     where: { OR: [{ uid: code }, { passportNo: code }] },

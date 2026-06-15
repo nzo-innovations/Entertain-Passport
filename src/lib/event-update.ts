@@ -1,7 +1,8 @@
 import { db } from "./db";
 import { toMinor, getCurrency, type CurrencyCode } from "./money";
-import { UserRole } from "./types";
+import { UserRole, ApprovalStatus, EventStatus } from "./types";
 import type { SessionUser } from "./auth";
+import { assertPhysicalReady } from "./physical-tickets";
 
 export class EventUpdateError extends Error {}
 
@@ -147,6 +148,11 @@ export async function updateEventForUser(user: SessionUser, eventId: string, inp
 
   const currency: CurrencyCode = getCurrency(input.currency).code;
 
+  // Once an event has been approved/published, prices are locked. Quantities can
+  // still move up or down, but a price change requires a brand-new category.
+  const pricingLocked = event.approvalStatus === ApprovalStatus.APPROVED;
+  const minorPerExisting = getCurrency(event.currency).minorUnits;
+
   // ---- Validate package edits against sold counts ----
   const existingById = new Map(event.packages.map((p) => [p.id, p]));
   const keptIds = new Set(input.packages.filter((p) => p.id).map((p) => p.id as string));
@@ -161,9 +167,22 @@ export async function updateEventForUser(user: SessionUser, eventId: string, inp
           `"${existing.name}" already sold ${existing.qtySold}; quantity can't be lower than that.`
         );
       }
+      if (pricingLocked) {
+        const existingMajor = existing.price / minorPerExisting;
+        if (Number(incoming.price) !== existingMajor) {
+          throw new EventUpdateError(
+            `"${existing.name}" is already live — its price can't be changed. Add a new ticket category for the new price instead.`
+          );
+        }
+      }
     } else if (incoming.qtyTotal < 0) {
       throw new EventUpdateError("Quantity must be zero or more.");
     }
+  }
+
+  // Super Admin moving an event to PUBLISHED must satisfy physical ticket matching.
+  if (isSuperAdmin && input.status === EventStatus.PUBLISHED) {
+    await assertPhysicalReady(eventId);
   }
 
   // Packages being removed must have no sales.

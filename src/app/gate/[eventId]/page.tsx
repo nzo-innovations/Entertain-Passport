@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, TicketCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { canScanEventTickets } from "@/lib/permissions";
 import { db } from "@/lib/db";
 import { getEventCheckinStats } from "@/lib/gate";
 import { GateConsole } from "@/components/gate/gate-console";
+import { Button } from "@/components/ui/button";
 import { formatEventDateLong } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +32,20 @@ export default async function GateEventPage({ params }: { params: { eventId: str
       <Link href="/gate" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="h-4 w-4" /> My events
       </Link>
-      <header>
-        <h1 className="font-display text-2xl font-bold">{event.title}</h1>
-        <p className="text-sm text-muted-foreground">
-          {formatEventDateLong(event.startsAt)} · {event.venue.name}
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold">{event.title}</h1>
+          <p className="text-sm text-muted-foreground">
+            {formatEventDateLong(event.startsAt)} · {event.venue.name}
+          </p>
+        </div>
+        {event.physicalTicketsEnabled && (
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/gate/${event.id}/tickets`}>
+              <TicketCheck className="h-4 w-4" /> Physical tickets
+            </Link>
+          </Button>
+        )}
       </header>
 
       <GateConsole eventId={event.id} eventTitle={event.title} initialStats={stats} />

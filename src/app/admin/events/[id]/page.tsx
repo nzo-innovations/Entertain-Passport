@@ -5,6 +5,8 @@ import { getSession, requireSuperAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { eventToEditInitial } from "@/lib/event-update";
 import { EventEditForm } from "@/components/events/event-edit-form";
+import { PhysicalTicketManager } from "@/components/tickets/physical-ticket-manager";
+import { PhysicalTicketReport } from "@/components/tickets/physical-ticket-report";
 import { ReviewEventActions } from "@/components/admin/review-event-actions";
 import { ApprovalBadge } from "@/components/shared/approval-badge";
 import { Button } from "@/components/ui/button";
@@ -148,6 +150,13 @@ export default async function AdminEventDetailPage({ params }: { params: { id: s
           </div>
         </section>
       )}
+
+      {/* Physical ticket management + reporting (Super Admin: full control) */}
+      <div className="space-y-6">
+        <h2 className="font-display text-xl font-bold">Physical tickets</h2>
+        <PhysicalTicketManager eventId={event.id} canConfigure />
+        <PhysicalTicketReport eventId={event.id} />
+      </div>
 
       {/* Full editor (super admin can change anything, including status & commission) */}
       <div>

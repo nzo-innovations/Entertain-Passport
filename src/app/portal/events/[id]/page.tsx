@@ -10,6 +10,8 @@ import { EventStaffManager } from "@/components/portal/event-staff-manager";
 import { CheckInManager } from "@/components/portal/check-in-manager";
 import { ArtistTagger } from "@/components/portal/artist-tagger";
 import { TicketCodeManager } from "@/components/portal/ticket-code-manager";
+import { PhysicalTicketManager } from "@/components/tickets/physical-ticket-manager";
+import { PhysicalTicketReport } from "@/components/tickets/physical-ticket-report";
 import { Button } from "@/components/ui/button";
 import { ApprovalStatus, EventStatus } from "@/lib/types";
 import { formatEventDateLong } from "@/lib/format";
@@ -134,6 +136,10 @@ export default async function PortalEventDetailPage({ params }: { params: { id: 
       )}
 
       <TicketCodeManager eventId={event.id} />
+
+      <PhysicalTicketManager eventId={event.id} canConfigure />
+
+      <PhysicalTicketReport eventId={event.id} />
 
       <CheckInManager eventId={event.id} />
 

@@ -39,6 +39,9 @@ pnpm-debug.log*
 prisma/dev.db
 prisma/dev.db-journal
 
+# generated prisma clients (verification plane)
+src/generated/
+
 # vercel
 .vercel
 

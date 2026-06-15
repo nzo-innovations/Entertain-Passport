@@ -10,10 +10,16 @@
     "start:fresh": "npm run build && next start",
     "lint": "next lint",
     "db:generate": "prisma generate",
+    "db:generate:verify": "prisma generate --schema=prisma/verification/schema.prisma",
+    "db:generate:all": "prisma generate && prisma generate --schema=prisma/verification/schema.prisma",
     "db:push": "prisma db push",
+    "verify:guard": "node --env-file=.env scripts/verify-db-guard.mjs",
+    "verify:rls": "node --env-file=.env scripts/verify-rls.mjs",
+    "db:push:verify": "npm run verify:guard && prisma db push --schema=prisma/verification/schema.prisma && npm run verify:rls",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:verify": "npm run verify:guard && tsx prisma/verification/seed.ts",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && prisma generate --schema=prisma/verification/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
