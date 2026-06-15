@@ -32,11 +32,15 @@ pnpm-debug.log*
 .env*.local
 
 # Cursor MCP (contains tokens — use mcp.json.example as template)
+.cursor
 .cursor/mcp.json
 
 # prisma
 prisma/dev.db
 prisma/dev.db-journal
+
+# generated prisma clients (verification plane)
+src/generated/
 
 # vercel
 .vercel

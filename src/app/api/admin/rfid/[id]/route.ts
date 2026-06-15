@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSuperAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { syncIdentity, syncStatus } from "@/lib/verify/sync";
 
 const schema = z.object({
   action: z.enum(["assign", "unassign", "block", "activate", "lost"]),
@@ -27,6 +28,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const data: Record<string, unknown> = {};
   if (parsed.data.label !== undefined) data.label = parsed.data.label || null;
 
+  let assignedUser: { name: string | null; idNumber: string | null; phone: string | null } | null = null;
+
   switch (parsed.data.action) {
     case "assign": {
       if (!parsed.data.email) return NextResponse.json({ error: "Email required to assign." }, { status: 400 });
@@ -35,6 +38,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       data.assignedUserId = user.id;
       data.assignedAt = new Date();
       data.status = "ACTIVE";
+      assignedUser = { name: user.name, idNumber: user.idNumber, phone: user.phone };
       break;
     }
     case "unassign":
@@ -57,6 +61,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const updated = await db.rfidCard.update({ where: { id: params.id }, data });
   await logAudit(admin.id, "UPDATE", "RfidCard", params.id, { action: parsed.data.action });
+
+  // Mirror the change into the isolated verification plane (best-effort).
+  try {
+    if (assignedUser) {
+      await syncIdentity({
+        uid: updated.uid,
+        passportNo: updated.passportNo,
+        status: updated.status,
+        adminLabel: updated.label,
+        name: assignedUser.name,
+        nic: assignedUser.idNumber,
+        mobile: assignedUser.phone,
+      });
+    } else {
+      await syncStatus(updated.passportNo, updated.status);
+    }
+  } catch (err) {
+    console.error("verification sync (update card) failed", err);
+  }
 
   return NextResponse.json({ ok: true, card: updated });
 }

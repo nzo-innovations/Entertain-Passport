@@ -54,17 +54,17 @@ export function Hero({ heroImages }: { heroImages: string[] }) {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="max-w-3xl"
+          className="max-w-5xl"
         >
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1.5 text-xs font-medium backdrop-blur">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             Built for music. 100% paperless tickets &amp; instant transfers.
           </div>
 
-          <h1 className="text-balance font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
+          <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight sm:text-5xl md:text-6xl lg:text-[4.25rem] xl:text-7xl">
             Where every beat{" "}
-            <span className="block">
-              finds its{" "}
+            <span className="block whitespace-nowrap">
+              {"finds its\u00a0"}
               <span className="relative inline-block">
                 <motion.span
                   key={ROTATING_TAGS[tagIndex]}
@@ -72,7 +72,7 @@ export function Hero({ heroImages }: { heroImages: string[] }) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
                   transition={{ duration: 0.45 }}
-                  className="gradient-text"
+                  className="gradient-text whitespace-nowrap"
                 >
                   {ROTATING_TAGS[tagIndex].toLowerCase()}
                 </motion.span>

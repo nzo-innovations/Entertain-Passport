@@ -133,6 +133,32 @@ export const TicketStatus = {
 } as const;
 export type TicketStatus = (typeof TicketStatus)[keyof typeof TicketStatus];
 
+/** Character set used to generate / validate printed physical ticket ref codes. */
+export const PhysicalCodeCharset = {
+  NUMERIC: "NUMERIC",
+  ALPHANUMERIC: "ALPHANUMERIC",
+} as const;
+export type PhysicalCodeCharset = (typeof PhysicalCodeCharset)[keyof typeof PhysicalCodeCharset];
+
+export const PHYSICAL_CODE_CHARSET_LABELS: Record<PhysicalCodeCharset, string> = {
+  NUMERIC: "Numbers only (0-9)",
+  ALPHANUMERIC: "Letters & numbers (A-Z, 0-9)",
+};
+
+/** Lifecycle of a single physical (printed) ticket reference code. */
+export const PhysicalTicketStatus = {
+  AVAILABLE: "AVAILABLE",
+  SOLD: "SOLD",
+  VOID: "VOID",
+} as const;
+export type PhysicalTicketStatus = (typeof PhysicalTicketStatus)[keyof typeof PhysicalTicketStatus];
+
+export const PHYSICAL_TICKET_STATUS_LABELS: Record<PhysicalTicketStatus, string> = {
+  AVAILABLE: "Available",
+  SOLD: "Sold",
+  VOID: "Void",
+};
+
 export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   DRAFT: "Draft",
   PENDING_REVIEW: "Pending review",

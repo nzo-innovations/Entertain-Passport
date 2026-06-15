@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { canScanEventTickets } from "@/lib/permissions";
 import { findTicketByCode, getEventCheckinStats } from "@/lib/gate";
+import { getGatePhysicalSuggestionsForTicket } from "@/lib/physical-tickets";
 import { TicketStatus } from "@/lib/types";
 
 export async function POST(req: Request) {
@@ -69,12 +70,16 @@ export async function POST(req: Request) {
     data: { status: TicketStatus.CHECKED_IN, checkedInAt: new Date(), checkedInById: session.id },
   });
 
-  const after = await getEventCheckinStats(eventId);
+  const [after, physicalTickets] = await Promise.all([
+    getEventCheckinStats(eventId),
+    getGatePhysicalSuggestionsForTicket(eventId, ticket.id),
+  ]);
   return NextResponse.json({
     ok: true,
     result: "CHECKED_IN",
     message: "Entry granted",
     ticket: { ...summary, checkedInAt: new Date() },
+    physicalTickets,
     stats: after,
   });
 }

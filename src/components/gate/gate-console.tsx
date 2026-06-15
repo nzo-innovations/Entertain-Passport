@@ -30,6 +30,13 @@ type Result = {
     passportNo?: string | null;
     isBulk?: boolean;
   };
+  physicalTickets?: PhysicalSuggestion[];
+};
+type PhysicalSuggestion = {
+  packageId: string;
+  packageName: string;
+  purchasedQty: number;
+  available: Array<{ id: string; refCode: string }>;
 };
 type SearchRow = {
   id: string;
@@ -65,6 +72,7 @@ export function GateConsole({
   const [stats, setStats] = React.useState<Stats>(initialStats);
   const [result, setResult] = React.useState<Result | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [markingPhysicalId, setMarkingPhysicalId] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Lookup / log state
@@ -125,6 +133,7 @@ export function GateConsole({
         result: data.result,
         message: data.message ?? data.error ?? "Error",
         ticket: data.ticket,
+        physicalTickets: data.physicalTickets ?? [],
       });
       setCode("");
       if (data.ok && data.ticket?.id) {
@@ -134,6 +143,30 @@ export function GateConsole({
     } finally {
       setLoading(false);
       inputRef.current?.focus();
+    }
+  };
+
+  const markPhysicalSold = async (physicalId: string) => {
+    setMarkingPhysicalId(physicalId);
+    try {
+      const res = await fetch(`/api/events/${eventId}/physical/${physicalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "SOLD" }),
+      });
+      if (!res.ok) return;
+      setResult((current) => {
+        if (!current?.physicalTickets) return current;
+        return {
+          ...current,
+          physicalTickets: current.physicalTickets.map((group) => ({
+            ...group,
+            available: group.available.filter((t) => t.id !== physicalId),
+          })),
+        };
+      });
+    } finally {
+      setMarkingPhysicalId(null);
     }
   };
 
@@ -241,6 +274,13 @@ export function GateConsole({
                       <Info className="h-4 w-4" />
                       {result.ticket.isBulk ? "View buyer & all tickets" : "View purchase info"}
                     </Button>
+                  )}
+                  {result.ok && result.physicalTickets && result.physicalTickets.length > 0 && (
+                    <PhysicalTicketQuickMark
+                      groups={result.physicalTickets}
+                      markingId={markingPhysicalId}
+                      onMarkSold={markPhysicalSold}
+                    />
                   )}
                 </div>
               </div>
@@ -365,6 +405,56 @@ export function GateConsole({
         group={orderGroup}
         loading={orderLoading}
       />
+    </div>
+  );
+}
+
+function PhysicalTicketQuickMark({
+  groups,
+  markingId,
+  onMarkSold,
+}: {
+  groups: PhysicalSuggestion[];
+  markingId: string | null;
+  onMarkSold: (id: string) => void;
+}) {
+  const visibleGroups = groups.filter((g) => g.available.length > 0);
+  if (visibleGroups.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-emerald-500/30 bg-background/70 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+        Mark physical ticket sold
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Showing available printed ticket numbers only for the categories in this buyer&apos;s purchase.
+      </p>
+      <div className="mt-3 space-y-3">
+        {visibleGroups.map((group) => (
+          <div key={group.packageId} className="rounded-lg border bg-card/80 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold">{group.packageName}</p>
+              <Badge variant="outline">Bought {group.purchasedQty}</Badge>
+            </div>
+            <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto pr-1">
+              {group.available.map((ticket) => (
+                <Button
+                  key={ticket.id}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={markingId === ticket.id}
+                  onClick={() => onMarkSold(ticket.id)}
+                  className="h-8 font-mono text-xs"
+                  title={`Mark ${ticket.refCode} as sold`}
+                >
+                  {markingId === ticket.id ? "..." : ticket.refCode}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

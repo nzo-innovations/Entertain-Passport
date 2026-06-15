@@ -12,6 +12,7 @@ import {
   ScanLine,
   Settings,
   Shield,
+  ShieldCheck,
   Tag,
   Users,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const NAV: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Organizations", href: "/admin/organizations", icon: Users },
   { label: "Gate staff", href: "/admin/gate-staff", icon: ScanLine },
   { label: "Passports (RFID)", href: "/admin/rfid", icon: CreditCard },
+  { label: "Verification API", href: "/admin/api", icon: ShieldCheck },
   { label: "Categories", href: "/admin/categories", icon: Tag },
   { label: "Venues", href: "/admin/venues", icon: MapPinned },
   { label: "Alerts", href: "/admin/alerts", icon: Bell },

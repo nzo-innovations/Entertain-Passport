@@ -4,6 +4,7 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { generatePassportNo } from "@/lib/rfid";
 import { logAudit } from "@/lib/audit";
+import { provisionCardKey, syncIdentity } from "@/lib/verify/sync";
 
 const schema = z.object({
   uid: z.string().trim().min(4).max(64),
@@ -43,5 +44,21 @@ export async function POST(req: Request) {
   });
   await logAudit(admin.id, "CREATE", "RfidCard", card.id, { uid: card.uid, passportNo });
 
-  return NextResponse.json({ ok: true, card });
+  // One-way sync into the isolated verification plane + DESFire key provisioning.
+  // Best-effort: never block card creation if the verification DB is unreachable.
+  let cardBlock: string | null = null;
+  try {
+    await syncIdentity({
+      uid: card.uid,
+      passportNo: card.passportNo,
+      status: "UNASSIGNED",
+      adminLabel: card.label,
+    });
+    const prov = await provisionCardKey(card.passportNo, card.uid);
+    cardBlock = prov.block;
+  } catch (err) {
+    console.error("verification sync (create card) failed", err);
+  }
+
+  return NextResponse.json({ ok: true, card, cardBlock });
 }

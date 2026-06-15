@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { UserRole, ApprovalStatus, OrgMemberRole, EventStaffRole } from "./types";
 import type { SessionUser } from "./auth";
+import { assertPhysicalReady } from "./physical-tickets";
 
 export async function getUserOrganizations(userId: string) {
   return db.organization.findMany({
@@ -69,6 +70,16 @@ export async function canScanEventTickets(userId: string, eventId: string, userR
 }
 
 /**
+ * Who may add/update/delete physical ticket reference codes and mark them sold.
+ * Allowed: Super Admin, org owners/admins (event managers), and any assigned
+ * gate staff for the event. Toggling the feature and viewing income reports is
+ * restricted to event managers (see canManageEvent).
+ */
+export async function canManagePhysicalTickets(userId: string, eventId: string, userRole?: string) {
+  return canScanEventTickets(userId, eventId, userRole);
+}
+
+/**
  * Who may roll back / undo a check-in. Per product rule, a plain gate
  * staff/scanner cannot; only an Event Manager (or the org owner/admin, or
  * Super Admin) can reverse a wrong check-in.
@@ -134,6 +145,9 @@ export async function submitEventForReview(eventId: string, actorId: string) {
   if (!["DRAFT", "CHANGES_REQUESTED", "REJECTED"].includes(event.approvalStatus)) {
     throw new Error("Event cannot be submitted in current state");
   }
+
+  // Block submission when physical ticket codes don't match category quantities.
+  await assertPhysicalReady(eventId);
 
   const from = event.approvalStatus;
   await db.event.update({
