@@ -20,6 +20,9 @@ export function PlacesFilterBar({ meta, resultCount }: Props) {
 
   const q = params.get("q") ?? "";
   const kind = params.get("kind") ?? "";
+  const main = params.get("main") ?? "";
+  const tagsParam = params.get("tags") ?? "";
+  const activeTags = tagsParam ? tagsParam.split(",").filter(Boolean) : [];
   const city = params.get("city") ?? "";
   const district = params.get("district") ?? "";
   const live = params.get("live") === "1";
@@ -49,7 +52,14 @@ export function PlacesFilterBar({ meta, resultCount }: Props) {
     return () => clearTimeout(t);
   }, [localSearch, q, update]);
 
-  const hasFilters = !!(q || kind || city || district || live || tickets || sort !== "name");
+  const hasFilters = !!(q || kind || main || tagsParam || city || district || live || tickets || sort !== "name");
+
+  const toggleTag = (slug: string) => {
+    const next = new Set(activeTags);
+    if (next.has(slug)) next.delete(slug);
+    else next.add(slug);
+    update({ tags: next.size ? [...next].join(",") : null, main: main || null });
+  };
 
   const activeCityDistricts = city
     ? meta.districts.filter((d) => d.count > 0)
@@ -108,6 +118,44 @@ export function PlacesFilterBar({ meta, resultCount }: Props) {
           />
         </div>
       </div>
+
+      <div className="scroll-fade-x -mx-1 overflow-x-auto px-1 pb-0.5">
+        <div className="flex w-max flex-wrap gap-2 sm:w-auto">
+          <KindPill
+            label="All categories"
+            count={meta.total}
+            active={!main}
+            onClick={() => update({ main: null, sub: null })}
+          />
+          {meta.mains.map((m) => (
+            <KindPill
+              key={m.slug}
+              label={m.name}
+              count={m.count}
+              active={main === m.slug}
+              onClick={() => update({ main: main === m.slug ? null : m.slug, sub: null })}
+            />
+          ))}
+        </div>
+      </div>
+
+      {meta.tags.some((t) => t.count > 0 || activeTags.includes(t.slug)) && (
+        <div className="scroll-fade-x -mx-1 overflow-x-auto px-1 pb-0.5">
+          <div className="flex w-max flex-wrap gap-2 sm:w-auto">
+            {meta.tags
+              .filter((t) => t.count > 0 || activeTags.includes(t.slug))
+              .map((t) => (
+                <TogglePill
+                  key={t.slug}
+                  icon={Music2}
+                  label={t.name}
+                  active={activeTags.includes(t.slug)}
+                  onClick={() => toggleTag(t.slug)}
+                />
+              ))}
+          </div>
+        </div>
+      )}
 
       <div className="scroll-fade-x -mx-1 overflow-x-auto px-1 pb-0.5">
         <div className="flex w-max flex-wrap gap-2 sm:w-auto">

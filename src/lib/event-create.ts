@@ -31,6 +31,7 @@ export type CreateEventInput = {
   images?: string[];
   primaryIndex?: number;
   packages: Array<{ name: string; price: number; qtyTotal: number; perks?: string }>;
+  tagIds?: string[];
 };
 
 export class EventCreateError extends Error {}
@@ -183,6 +184,13 @@ export async function createEventForUser(user: SessionUser, input: CreateEventIn
         sortOrder: i,
       })),
     });
+
+    if (input.tagIds?.length) {
+      await tx.eventTag.createMany({
+        data: input.tagIds.map((tagId) => ({ eventId: event.id, tagId })),
+        skipDuplicates: true,
+      });
+    }
 
     await tx.eventApprovalLog.create({
       data: {

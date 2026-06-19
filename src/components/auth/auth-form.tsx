@@ -7,9 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/shared/logo";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { CREATOR_TYPES, ROUTES } from "@/lib/config";
+import { CREATOR_TYPES, PLACES_LABEL, ROUTES } from "@/lib/config";
 import { bindBrowserSession, clearBrowserSession } from "@/lib/session-client";
-import { CREATOR_ROLES, UserRole, isPortalRole } from "@/lib/types";
+import { CREATOR_ROLES, UserRole, isPortalRole, OrgType } from "@/lib/types";
+import {
+  CategoryTagPicker,
+  type CatalogPick,
+} from "@/components/shared/category-tag-picker";
 
 type Variant = "customer" | "organizer" | "admin";
 
@@ -63,6 +67,16 @@ export function AuthForm({
   const [name, setName] = React.useState("");
   const [orgName, setOrgName] = React.useState("");
   const [orgType, setOrgType] = React.useState<string>(CREATOR_TYPES[0].value);
+  const [placesCatalog, setPlacesCatalog] = React.useState<{
+    mains: { id: string; name: string; slug: string }[];
+    tags: { id: string; name: string; slug: string }[];
+  }>({ mains: [], tags: [] });
+  const [placesPick, setPlacesPick] = React.useState<CatalogPick>({
+    mainCategoryId: "",
+    subCategoryId: null,
+    tagIds: [],
+  });
+  const [loadingPlaces, setLoadingPlaces] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(() => {
     const err = params.get("error");
@@ -76,6 +90,24 @@ export function AuthForm({
   const [info, setInfo] = React.useState<string | null>(null);
 
   const next = safeNextPath(params.get("next"));
+
+  React.useEffect(() => {
+    if (!isOrganizer || orgType !== OrgType.BUSINESS_OWNER) return;
+    let cancelled = false;
+    setLoadingPlaces(true);
+    fetch("/api/catalog/categories?module=PLACES")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setPlacesCatalog({ mains: data.mains ?? [], tags: data.tags ?? [] });
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPlaces(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOrganizer, orgType]);
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
@@ -139,6 +171,16 @@ export function AuthForm({
     if (isOrganizer) {
       metadata.orgType = orgType;
       metadata.orgName = orgName || name;
+      if (orgType === OrgType.BUSINESS_OWNER) {
+        if (!placesPick.mainCategoryId) {
+          setError("Please select a Places to Go category.");
+          setLoading(false);
+          return;
+        }
+        metadata.placesMainCategoryId = placesPick.mainCategoryId;
+        if (placesPick.subCategoryId) metadata.placesSubCategoryId = placesPick.subCategoryId;
+        if (placesPick.tagIds.length) metadata.placesTagIds = JSON.stringify(placesPick.tagIds);
+      }
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -220,6 +262,32 @@ export function AuthForm({
                     {CREATOR_TYPES.find((t) => t.value === orgType)?.hint}
                   </span>
                 </label>
+                {orgType === OrgType.BUSINESS_OWNER && (
+                  <div className="rounded-xl border bg-muted/30 p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Places to Go · registration
+                    </p>
+                    {loadingPlaces ? (
+                      <p className="text-sm text-muted-foreground">Loading categories…</p>
+                    ) : (
+                      <CategoryTagPicker
+                        module="PLACES"
+                        mains={placesCatalog.mains}
+                        tags={placesCatalog.tags}
+                        value={placesPick}
+                        onChange={setPlacesPick}
+                        mainLabel="Places to Go category"
+                        subLabel="Subcategory"
+                        subRequired={false}
+                        supportHref={ROUTES.contact}
+                      />
+                    )}
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Company / venue owners get access to both Discover &amp; Shows (events) and{" "}
+                      {PLACES_LABEL} from the organizer portal.
+                    </p>
+                  </div>
+                )}
                 <label className="block space-y-1.5 text-sm">
                   <span className="font-medium">
                     {orgType === "ARTIST"

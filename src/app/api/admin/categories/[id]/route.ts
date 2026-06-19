@@ -23,9 +23,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Invalid category data." }, { status: 400 });
   }
 
+  const existing = await db.category.findUnique({ where: { id: params.id } });
+  if (!existing) {
+    return NextResponse.json({ error: "Category not found." }, { status: 404 });
+  }
+
   const slug = slugify(parsed.data.name);
   const clash = await db.category.findFirst({
-    where: { slug, NOT: { id: params.id } },
+    where: { module: existing.module, slug, NOT: { id: params.id } },
   });
   if (clash) {
     return NextResponse.json({ error: "Another category already uses that name." }, { status: 409 });
@@ -49,9 +54,15 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   }
 
   const eventCount = await db.event.count({ where: { categoryId: params.id } });
-  if (eventCount > 0) {
+  const venueCount = await db.venue.count({
+    where: { OR: [{ placesMainCategoryId: params.id }, { placesSubCategoryId: params.id }] },
+  });
+  const childCount = await db.category.count({ where: { parentId: params.id } });
+  if (eventCount > 0 || venueCount > 0 || childCount > 0) {
     return NextResponse.json(
-      { error: `Cannot delete: ${eventCount} event(s) still use this category.` },
+      {
+        error: `Cannot delete: in use by ${eventCount} event(s), ${venueCount} venue(s), ${childCount} subcategory(ies).`,
+      },
       { status: 409 }
     );
   }

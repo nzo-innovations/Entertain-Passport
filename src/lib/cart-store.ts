@@ -61,7 +61,7 @@ export const useCart = create<CartState>()(
         const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
         const fees = Math.round(subtotal * 0.025); // 2.5% service fee, demo
         const total = subtotal + fees;
-        const loyaltyEarned = Math.floor(subtotal / 100); // 1pt per $1
+        const loyaltyEarned = Math.floor(subtotal / 10_000); // matches default: 1 pt per LKR 100
         return { subtotal, fees, total, loyaltyEarned };
       },
     }),

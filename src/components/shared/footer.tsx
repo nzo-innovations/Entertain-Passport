@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./logo";
-import { NZO_CONTACT_URL, PLACES_LABEL } from "@/lib/config";
+import { PLACES_LABEL, ROUTES } from "@/lib/config";
 
 const SECTIONS = [
   {
@@ -19,7 +19,7 @@ const SECTIONS = [
       { label: "All places", href: "/venues" },
       { label: "Publish your place", href: "/organizer/login" },
       { label: "Organizer sign in", href: "/organizer/login" },
-      { label: "Contact us", href: NZO_CONTACT_URL },
+      { label: "Contact us", href: ROUTES.contact },
     ],
   },
   {
@@ -28,7 +28,7 @@ const SECTIONS = [
       { label: "About", href: "#" },
       { label: "Careers", href: "#" },
       { label: "Press", href: "#" },
-      { label: "Contact", href: NZO_CONTACT_URL },
+      { label: "Contact", href: ROUTES.contact },
     ],
   },
   {

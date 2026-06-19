@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { generateBarcode, generateQrPayload } from "./tickets";
 import { OrderStatus, TicketStatus } from "./types";
+import { calculateEarnedPoints, getLoyaltySettings } from "./loyalty/config";
 
 export type CheckoutItem = { packageId: string; qty: number };
 
@@ -20,7 +21,7 @@ export async function createPaidOrder(
 
   const packageIds = items.map((i) => i.packageId);
 
-  const [packages, passport] = await Promise.all([
+  const [packages, passport, loyaltySettings] = await Promise.all([
     db.ticketPackage.findMany({
       where: { id: { in: packageIds } },
       select: {
@@ -36,6 +37,7 @@ export async function createPaidOrder(
       where: { assignedUserId: userId, status: "ACTIVE" },
       select: { id: true },
     }),
+    getLoyaltySettings(),
   ]);
 
   const lines = items.map((item) => {
@@ -56,7 +58,7 @@ export async function createPaidOrder(
   );
   const total = subtotal + fees;
   const currency = lines[0]?.pkg.event.currency ?? "LKR";
-  const loyaltyEarned = passport ? Math.floor(subtotal / 100) : 0;
+  const loyaltyEarned = calculateEarnedPoints(subtotal, loyaltySettings, !!passport);
 
   return db.$transaction(async (tx) => {
     // Reserve inventory first — fails if another checkout took the last tickets.

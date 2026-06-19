@@ -19,8 +19,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { PLACES_LABEL } from "@/lib/config";
+import { PLACES_LABEL, ROUTES } from "@/lib/config";
 import { VenueProgramSchedule, type ProgramRow } from "@/components/venues/venue-program-schedule";
+import {
+  CategoryTagPicker,
+  type CatalogPick,
+} from "@/components/shared/category-tag-picker";
 import {
   ACT_TYPE_LABELS,
   DAY_NAMES,
@@ -50,7 +54,13 @@ type VenueProfile = {
   coverImageUrl: string | null;
   capacity: number;
   isPublished: boolean;
+  placesMainCategoryId?: string | null;
+  placesSubCategoryId?: string | null;
+  tagIds?: string[];
 };
+
+type CatalogMain = { id: string; name: string; slug: string };
+type CatalogTag = { id: string; name: string; slug: string };
 
 const COVER_FALLBACK =
   "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=1600&q=80";
@@ -68,7 +78,15 @@ const emptyProgram = {
   isPublished: true,
 };
 
-export function VenueManager({ orgName }: { orgName: string }) {
+export function VenueManager({
+  orgName,
+  placesMains,
+  placesTags,
+}: {
+  orgName: string;
+  placesMains: CatalogMain[];
+  placesTags: CatalogTag[];
+}) {
   const { toast } = useToast();
   const [tab, setTab] = React.useState<"profile" | "program" | "tickets">("profile");
   const [loading, setLoading] = React.useState(true);
@@ -94,6 +112,11 @@ export function VenueManager({ orgName }: { orgName: string }) {
   });
   const [programForm, setProgramForm] = React.useState(emptyProgram);
   const [programSaving, setProgramSaving] = React.useState(false);
+  const [catalogPick, setCatalogPick] = React.useState<CatalogPick>({
+    mainCategoryId: "",
+    subCategoryId: null,
+    tagIds: [],
+  });
 
   React.useEffect(() => {
     async function load() {
@@ -120,6 +143,11 @@ export function VenueManager({ orgName }: { orgName: string }) {
             capacity: v.capacity,
             isPublished: v.isPublished,
           });
+          setCatalogPick({
+            mainCategoryId: v.placesMainCategoryId ?? "",
+            subCategoryId: v.placesSubCategoryId ?? null,
+            tagIds: v.tagIds ?? [],
+          });
         }
         const progRes = await fetch("/api/portal/venue/program", { cache: "no-store" });
         if (progRes.ok) {
@@ -134,12 +162,21 @@ export function VenueManager({ orgName }: { orgName: string }) {
   }, [orgName]);
 
   async function saveProfile() {
+    if (!catalogPick.mainCategoryId) {
+      toast({ title: "Select a Places to Go category", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/portal/venue", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          placesMainCategoryId: catalogPick.mainCategoryId,
+          placesSubCategoryId: catalogPick.subCategoryId,
+          tagIds: catalogPick.tagIds,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
@@ -219,6 +256,23 @@ export function VenueManager({ orgName }: { orgName: string }) {
       {tab === "profile" && (
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
           <div className="space-y-4">
+            <div className="rounded-xl border bg-muted/30 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {PLACES_LABEL} · category
+              </p>
+              <CategoryTagPicker
+                module="PLACES"
+                mains={placesMains}
+                tags={placesTags}
+                value={catalogPick}
+                onChange={setCatalogPick}
+                mainLabel="Main category"
+                subLabel="Subcategory"
+                subRequired={false}
+                supportHref={ROUTES.contact}
+              />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 sm:col-span-2">
                 <span className="text-sm font-medium">Venue name</span>

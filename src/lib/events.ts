@@ -15,6 +15,9 @@ export const publicEventWhere = {
 
 export type EventCardFilter = {
   categorySlug?: string;
+  mainCategorySlug?: string;
+  subCategorySlug?: string;
+  tagSlugs?: string[];
   featured?: boolean;
   search?: string;
   limit?: number;
@@ -26,7 +29,30 @@ async function fetchEventCards(filter?: EventCardFilter): Promise<EventCardData[
     where: {
       ...publicEventWhere,
       ...(filter?.featured ? { featured: true } : {}),
-      ...(filter?.categorySlug ? { category: { slug: filter.categorySlug } } : {}),
+      ...(filter?.categorySlug
+        ? {
+            OR: [
+              { category: { slug: filter.categorySlug } },
+              { category: { parent: { slug: filter.categorySlug } } },
+            ],
+          }
+        : {}),
+      ...(filter?.mainCategorySlug
+        ? {
+            OR: [
+              { category: { slug: filter.mainCategorySlug, parentId: null } },
+              { category: { parent: { slug: filter.mainCategorySlug } } },
+            ],
+          }
+        : {}),
+      ...(filter?.subCategorySlug ? { category: { slug: filter.subCategorySlug } } : {}),
+      ...(filter?.tagSlugs?.length
+        ? {
+            AND: filter.tagSlugs.map((slug) => ({
+              tags: { some: { tag: { slug } } },
+            })),
+          }
+        : {}),
       ...(filter?.search
         ? {
             OR: [
@@ -85,23 +111,86 @@ export async function getEventCards(filter?: EventCardFilter): Promise<EventCard
   return cachedEventCards(key);
 }
 
+import { SHOWS_MAIN_SLUGS } from "./category-tags";
+
 async function fetchCategoriesWithCounts() {
   const cats = await db.category.findMany({
+    where: { module: "SHOWS", parentId: null, slug: { in: [...SHOWS_MAIN_SLUGS] } },
     select: {
       name: true,
       slug: true,
       iconKey: true,
+      children: {
+        select: {
+          name: true,
+          slug: true,
+          _count: { select: { events: { where: publicEventWhere } } },
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      },
       _count: { select: { events: { where: publicEventWhere } } },
     },
-    orderBy: { name: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
-  return cats.map((c) => ({
-    name: c.name,
-    slug: c.slug,
-    iconKey: c.iconKey,
-    count: c._count.events,
-  }));
+  return cats.map((c) => {
+    const subCount = c.children.reduce((s, ch) => s + ch._count.events, 0);
+    return {
+      name: c.name,
+      slug: c.slug,
+      iconKey: c.iconKey,
+      count: c._count.events + subCount,
+    };
+  });
 }
+
+export type ShowsCategoryTreeItem = {
+  name: string;
+  slug: string;
+  iconKey: string | null;
+  count: number;
+  subs: { name: string; slug: string; count: number }[];
+};
+
+async function fetchShowsCategoryTreeWithCounts(): Promise<ShowsCategoryTreeItem[]> {
+  const cats = await db.category.findMany({
+    where: { module: "SHOWS", parentId: null, slug: { in: [...SHOWS_MAIN_SLUGS] } },
+    select: {
+      name: true,
+      slug: true,
+      iconKey: true,
+      children: {
+        select: {
+          name: true,
+          slug: true,
+          _count: { select: { events: { where: publicEventWhere } } },
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      },
+      _count: { select: { events: { where: publicEventWhere } } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+  return cats.map((c) => {
+    const subs = c.children.map((ch) => ({
+      name: ch.name,
+      slug: ch.slug,
+      count: ch._count.events,
+    }));
+    const subCount = subs.reduce((s, ch) => s + ch.count, 0);
+    return {
+      name: c.name,
+      slug: c.slug,
+      iconKey: c.iconKey,
+      count: c._count.events + subCount,
+      subs,
+    };
+  });
+}
+
+const cachedCategoryTree = unstable_cache(fetchShowsCategoryTreeWithCounts, ["shows-category-tree"], {
+  revalidate: 120,
+  tags: ["events", "categories"],
+});
 
 const cachedCategories = unstable_cache(fetchCategoriesWithCounts, ["event-categories"], {
   revalidate: 120,
@@ -110,6 +199,10 @@ const cachedCategories = unstable_cache(fetchCategoriesWithCounts, ["event-categ
 
 export async function getCategoriesWithCounts() {
   return cachedCategories();
+}
+
+export async function getShowsCategoryTreeWithCounts() {
+  return cachedCategoryTree();
 }
 
 async function fetchEventBySlug(slug: string, includeUnpublished: boolean) {

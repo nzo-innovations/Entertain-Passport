@@ -18,6 +18,9 @@ const profileSchema = z.object({
     VenueKind.DATING_SPOT,
     VenueKind.OTHER,
   ]),
+  placesMainCategoryId: z.string().min(1, "Select a main category"),
+  placesSubCategoryId: z.string().nullable().optional(),
+  tagIds: z.array(z.string()).optional(),
   address: z.string().trim().min(2).max(200),
   line2: z.string().trim().max(200).optional(),
   city: z.string().trim().min(2).max(80),
@@ -40,7 +43,22 @@ export async function GET() {
   }
 
   const row = await getOrgVenueForUser(session.id);
-  return NextResponse.json({ org: row?.org ?? null, venue: row?.venue ?? null });
+  const venue = row?.venue
+    ? await db.venue.findUnique({
+        where: { id: row.venue.id },
+        include: { tags: { select: { tagId: true } } },
+      })
+    : null;
+  return NextResponse.json({
+    org: row?.org ?? null,
+    venue: venue
+      ? {
+          ...venue,
+          tagIds: venue.tags.map((t) => t.tagId),
+          tags: undefined,
+        }
+      : null,
+  });
 }
 
 export async function PUT(req: Request) {
@@ -67,11 +85,24 @@ export async function PUT(req: Request) {
   const existing = await db.venue.findFirst({ where: { organizationId: org.id } });
   const slug = existing?.slug ?? (await uniqueVenueSlug(data.name));
 
+  const mainCat = await db.category.findUnique({ where: { id: data.placesMainCategoryId } });
+  if (!mainCat || mainCat.module !== "PLACES" || mainCat.parentId) {
+    return NextResponse.json({ error: "Invalid Places to Go main category." }, { status: 400 });
+  }
+  if (data.placesSubCategoryId) {
+    const sub = await db.category.findUnique({ where: { id: data.placesSubCategoryId } });
+    if (!sub || sub.parentId !== mainCat.id) {
+      return NextResponse.json({ error: "Invalid subcategory for the selected main category." }, { status: 400 });
+    }
+  }
+
   const payload = {
     name: data.name,
     slug,
     description: data.description || null,
     kind: data.kind,
+    placesMainCategoryId: data.placesMainCategoryId,
+    placesSubCategoryId: data.placesSubCategoryId || null,
     address: data.address,
     line2: data.line2 || null,
     city: data.city,
@@ -87,11 +118,40 @@ export async function PUT(req: Request) {
     organizationId: org.id,
   };
 
+  const tagIds = [...new Set(data.tagIds ?? [])];
+
   const venue = existing
-    ? await db.venue.update({ where: { id: existing.id }, data: payload })
-    : await db.venue.create({ data: payload });
+    ? await db.$transaction(async (tx) => {
+        const v = await tx.venue.update({ where: { id: existing.id }, data: payload });
+        await tx.venueTag.deleteMany({ where: { venueId: v.id } });
+        if (tagIds.length) {
+          await tx.venueTag.createMany({
+            data: tagIds.map((tagId) => ({ venueId: v.id, tagId })),
+          });
+        }
+        return tx.venue.findUnique({
+          where: { id: v.id },
+          include: { tags: { select: { tagId: true } } },
+        });
+      })
+    : await db.$transaction(async (tx) => {
+        const v = await tx.venue.create({ data: payload });
+        if (tagIds.length) {
+          await tx.venueTag.createMany({
+            data: tagIds.map((tagId) => ({ venueId: v.id, tagId })),
+          });
+        }
+        return tx.venue.findUnique({
+          where: { id: v.id },
+          include: { tags: { select: { tagId: true } } },
+        });
+      });
 
   revalidateTag("venues");
 
-  return NextResponse.json({ venue });
+  return NextResponse.json({
+    venue: venue
+      ? { ...venue, tagIds: venue.tags.map((t) => t.tagId), tags: undefined }
+      : null,
+  });
 }

@@ -3,8 +3,24 @@
  * Centralized here so links and defaults are not hard-coded across the UI.
  */
 
-/** nZO Innovations contact page (used when creators need a new event category). */
+/** nZO Innovations contact page (legacy external link). Prefer in-app `/contact`. */
 export const NZO_CONTACT_URL = "https://nzoinnovations.com/contact";
+
+/** In-app contact & WhatsApp support. */
+export const SUPPORT_CONTACTS = [
+  {
+    label: "Entertain Passport Support",
+    display: "+94 773638063",
+    tel: "+94773638063",
+    whatsapp: "https://wa.me/94773638063",
+  },
+  {
+    label: "Entertain Passport Support (Alt)",
+    display: "+94 76 465 5741",
+    tel: "+94764655741",
+    whatsapp: "https://wa.me/94764655741",
+  },
+] as const;
 
 /** Default platform commission percentage applied to new events. */
 export const DEFAULT_COMMISSION_PCT = 5;
@@ -20,6 +36,7 @@ export const ROUTES = {
   tickets: "/account/tickets",
   createEvent: "/portal/events/new",
   gate: "/gate",
+  contact: "/contact",
 } as const;
 
 /** Public nav label for /venues — pubs, clubs, cafés, restaurants & dating spots. */

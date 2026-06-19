@@ -51,7 +51,7 @@ export function CategoryStrip({ items }: { items: CategoryStripItem[] }) {
           return (
             <Link
               key={c.slug}
-              href={`/events?category=${c.slug}`}
+              href={`/events?main=${c.slug}`}
               className="group flex flex-col items-center gap-3 rounded-2xl border bg-card p-5 text-center transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/40"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-xl gradient-brand text-white shadow-md shadow-primary/20 transition-transform group-hover:scale-110">

@@ -18,6 +18,7 @@
     "db:push:verify": "npm run verify:guard && prisma db push --schema=prisma/verification/schema.prisma && npm run verify:rls",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:verify": "npm run verify:guard && tsx prisma/verification/seed.ts",
+    "db:seed:catalog": "tsx prisma/seed-catalog.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate && prisma generate --schema=prisma/verification/schema.prisma"
   },

@@ -21,6 +21,7 @@ export type TapOutcome = {
   verdict: Verdict;
   status: string | null; // validation status surfaced to partner (ACTIVE/BLOCKED/...)
   billable: boolean; // definitive answer about a real, known card
+  passportNo?: string | null; // internal — for usage metering, never returned to partners
   reason?: string;
 };
 
@@ -69,10 +70,16 @@ export async function verifyTap(input: TapInput): Promise<TapOutcome> {
 
   switch (identity.status) {
     case "ACTIVE":
-      return { verdict: "VALID", status: "ACTIVE", billable: true };
+      return { verdict: "VALID", status: "ACTIVE", billable: true, passportNo: identity.passportNo };
     case "BLOCKED":
     case "LOST":
-      return { verdict: "BLOCKED", status: identity.status, billable: true, reason: "card_blocked" };
+      return {
+        verdict: "BLOCKED",
+        status: identity.status,
+        billable: true,
+        passportNo: identity.passportNo,
+        reason: "card_blocked",
+      };
     default:
       return { verdict: "INVALID", status: identity.status, billable: false, reason: "card_inactive" };
   }
@@ -91,6 +98,7 @@ export async function meterAndLog(args: {
   billable: boolean;
   limits: EffectiveLimits | null;
   reason?: string;
+  passportNo?: string | null;
 }): Promise<number> {
   let priceMinor = 0;
   const period = currentPeriod();
@@ -119,6 +127,7 @@ export async function meterAndLog(args: {
         billable: args.billable,
         priceMinor,
         reason: args.reason ?? null,
+        passportNo: args.passportNo ?? null,
       },
     });
 

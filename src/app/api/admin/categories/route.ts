@@ -6,7 +6,9 @@ import { slugify } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 
 const schema = z.object({
-  name: z.string().trim().min(2).max(60),
+  name: z.string().trim().min(2).max(80),
+  module: z.enum(["SHOWS", "PLACES"]).default("SHOWS"),
+  parentId: z.string().nullable().optional(),
   iconKey: z.string().trim().max(40).optional().or(z.literal("")),
 });
 
@@ -24,15 +26,30 @@ export async function POST(req: Request) {
   }
 
   const slug = slugify(parsed.data.name);
-  const exists = await db.category.findFirst({ where: { OR: [{ slug }, { name: parsed.data.name }] } });
+  const exists = await db.category.findUnique({
+    where: { module_slug: { module: parsed.data.module, slug } },
+  });
   if (exists) {
-    return NextResponse.json({ error: "A category with that name already exists." }, { status: 409 });
+    return NextResponse.json({ error: "A category with that slug already exists in this module." }, { status: 409 });
+  }
+
+  if (parsed.data.parentId) {
+    const parent = await db.category.findUnique({ where: { id: parsed.data.parentId } });
+    if (!parent || parent.module !== parsed.data.module) {
+      return NextResponse.json({ error: "Invalid parent category." }, { status: 400 });
+    }
   }
 
   const category = await db.category.create({
-    data: { name: parsed.data.name, slug, iconKey: parsed.data.iconKey || null },
+    data: {
+      name: parsed.data.name,
+      slug,
+      module: parsed.data.module,
+      parentId: parsed.data.parentId || null,
+      iconKey: parsed.data.iconKey || null,
+    },
   });
-  await logAudit(admin.id, "CREATE", "Category", category.id, { name: category.name });
+  await logAudit(admin.id, "CREATE", "Category", category.id, { name: category.name, module: category.module });
 
   return NextResponse.json({ ok: true, category });
 }

@@ -16,9 +16,13 @@ export const metadata = {
 export const revalidate = 60;
 
 function parseFilters(searchParams: Record<string, string | undefined>): PlacesFilter {
+  const tagSlugs = searchParams.tags?.split(",").filter(Boolean);
   return {
     search: searchParams.q,
     kind: searchParams.kind,
+    mainCategorySlug: searchParams.main,
+    subCategorySlug: searchParams.sub,
+    tagSlugs: tagSlugs?.length ? tagSlugs : undefined,
     city: searchParams.city,
     district: searchParams.district,
     live: searchParams.live === "1",
@@ -35,12 +39,15 @@ export default async function VenuesPage({
   const filters = parseFilters(searchParams);
   const [venues, meta] = await Promise.all([
     getPublishedVenueCards(filters),
-    getPlacesFilterMeta({ city: filters.city, kind: filters.kind }),
+    getPlacesFilterMeta({ city: filters.city, kind: filters.kind, mainCategorySlug: filters.mainCategorySlug }),
   ]);
 
   const hasActiveFilters = !!(
     filters.search ||
     filters.kind ||
+    filters.mainCategorySlug ||
+    filters.subCategorySlug ||
+    filters.tagSlugs?.length ||
     filters.city ||
     filters.district ||
     filters.live ||

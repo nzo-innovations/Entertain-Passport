@@ -1,28 +1,49 @@
 import { Suspense } from "react";
 import { FilterBar } from "@/components/events/filter-bar";
 import { EventGrid } from "@/components/events/event-grid";
-import { getCategoriesWithCounts, getEventCards } from "@/lib/events";
+import { getShowsCategoryTreeWithCounts, getEventCards, type EventCardFilter } from "@/lib/events";
+import { getTagsForModule, CatalogModule } from "@/lib/catalog";
+import { buildCategoryTagsMap, SHOWS_MAIN_SLUGS } from "@/lib/category-tags";
 
 export const revalidate = 60;
+
+function parseFilters(searchParams?: Record<string, string | undefined>): EventCardFilter {
+  const tagSlugs = searchParams?.tags?.split(",").filter(Boolean);
+  return {
+    categorySlug: searchParams?.category,
+    mainCategorySlug: searchParams?.main ?? searchParams?.category,
+    subCategorySlug: searchParams?.sub,
+    tagSlugs: tagSlugs?.length ? tagSlugs : undefined,
+    search: searchParams?.q,
+    limit: 60,
+  };
+}
 
 export default async function EventsBrowsePage({
   searchParams,
 }: {
-  searchParams?: { category?: string; q?: string };
+  searchParams?: { category?: string; main?: string; sub?: string; tags?: string; q?: string };
 }) {
-  const [events, categories] = await Promise.all([
-    getEventCards({
-      categorySlug: searchParams?.category,
-      search: searchParams?.q,
-      limit: 60,
-    }),
-    getCategoriesWithCounts(),
+  const filters = parseFilters(searchParams);
+  const [events, categoryTree, allTags] = await Promise.all([
+    getEventCards(filters),
+    getShowsCategoryTreeWithCounts(),
+    getTagsForModule(CatalogModule.SHOWS),
   ]);
+
+  const tagRows = allTags.map((t) => ({ slug: t.slug, name: t.name }));
+  const categoryTags = buildCategoryTagsMap(CatalogModule.SHOWS, [...SHOWS_MAIN_SLUGS], tagRows);
+
+  const mainSlug = searchParams?.main ?? searchParams?.category;
+  const main = categoryTree.find((c) => c.slug === mainSlug);
+  const sub = main?.subs.find((s) => s.slug === searchParams?.sub);
 
   const heading = searchParams?.q
     ? `Results for \u201c${searchParams.q}\u201d`
-    : searchParams?.category
-    ? `${categories.find((c) => c.slug === searchParams.category)?.name ?? "Events"}`
+    : sub
+    ? `${main?.name} · ${sub.name}`
+    : main
+    ? main.name
     : "All events";
 
   return (
@@ -35,8 +56,8 @@ export default async function EventsBrowsePage({
         </p>
       </header>
 
-      <Suspense fallback={<div className="h-28 animate-pulse rounded-2xl border bg-muted/30" />}>
-        <FilterBar categories={categories} />
+      <Suspense fallback={<div className="h-36 animate-pulse rounded-2xl border bg-muted/30" />}>
+        <FilterBar categoryTree={categoryTree} categoryTags={categoryTags} />
       </Suspense>
 
       <EventGrid

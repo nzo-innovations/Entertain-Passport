@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { EventWizard } from "@/components/events/event-wizard";
+import { getMainCategories, getTagsForModule, CatalogModule } from "@/lib/catalog";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_COMMISSION_PCT } from "@/lib/config";
@@ -15,8 +16,9 @@ export default async function PortalNewEventPage({
   const session = await getSession();
   if (!session) redirect("/organizer/login");
 
-  const [categories, org, settings, orgRow] = await Promise.all([
-    db.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  const [showsMains, showsTags, org, settings, orgRow] = await Promise.all([
+    getMainCategories(CatalogModule.SHOWS),
+    getTagsForModule(CatalogModule.SHOWS),
     db.organization.findFirst({
       where: { OR: [{ ownerId: session.id }, { members: { some: { userId: session.id } } }] },
       orderBy: { createdAt: "asc" },
@@ -39,7 +41,8 @@ export default async function PortalNewEventPage({
 
   return (
     <EventWizard
-      categories={categories}
+      showsMains={showsMains}
+      showsTags={showsTags}
       canEditCommission={false}
       defaultCommission={effectiveCommission}
       orgVenue={orgVenue}

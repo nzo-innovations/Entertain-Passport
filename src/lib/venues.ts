@@ -1,3 +1,4 @@
+import { PLACES_MAIN_SLUGS } from "./category-tags";
 import { db } from "./db";
 import { slugify } from "./utils";
 import { unstable_cache } from "next/cache";
@@ -39,6 +40,9 @@ export async function uniqueVenueSlug(name: string, excludeId?: string): Promise
 
 export type PlacesFilter = {
   kind?: string;
+  mainCategorySlug?: string;
+  subCategorySlug?: string;
+  tagSlugs?: string[];
   city?: string;
   district?: string;
   search?: string;
@@ -52,6 +56,8 @@ export type PlacesFilter = {
 export type PlacesFilterMeta = {
   total: number;
   kinds: { value: string; label: string; count: number }[];
+  mains: { slug: string; name: string; count: number }[];
+  tags: { slug: string; name: string; count: number }[];
   cities: { city: string; count: number }[];
   districts: { district: string; count: number }[];
 };
@@ -65,29 +71,53 @@ const upcomingEventWhere = {
 export async function getPlacesFilterMeta(active?: {
   city?: string;
   kind?: string;
+  mainCategorySlug?: string;
 }): Promise<PlacesFilterMeta> {
-  const venues = await db.venue.findMany({
-    where: {
-      ...publicVenueWhere,
-      ...(active?.city ? { city: { equals: active.city, mode: "insensitive" as const } } : {}),
-      ...(active?.kind ? { kind: active.kind } : {}),
-    },
-    select: {
-      kind: true,
-      city: true,
-      district: true,
-      _count: {
-        select: {
-          programs: { where: { isPublished: true } },
-          events: { where: upcomingEventWhere },
+  const baseWhere = {
+    ...publicVenueWhere,
+    ...(active?.city ? { city: { equals: active.city, mode: "insensitive" as const } } : {}),
+    ...(active?.kind ? { kind: active.kind } : {}),
+    ...(active?.mainCategorySlug
+      ? {
+          OR: [
+            { placesMainCategory: { slug: active.mainCategorySlug } },
+            { placesSubCategory: { parent: { slug: active.mainCategorySlug } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [venues, mains, tags] = await Promise.all([
+    db.venue.findMany({
+      where: baseWhere,
+      select: {
+        kind: true,
+        city: true,
+        district: true,
+        placesMainCategoryId: true,
+        placesMainCategory: { select: { slug: true, name: true } },
+        tags: { select: { tag: { select: { slug: true, name: true } } } },
+        _count: {
+          select: {
+            programs: { where: { isPublished: true } },
+            events: { where: upcomingEventWhere },
+          },
         },
       },
-    },
-  });
+    }),
+    db.category.findMany({
+      where: { module: "PLACES", parentId: null, slug: { in: [...PLACES_MAIN_SLUGS] } },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { slug: true, name: true },
+    }),
+    db.tag.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { slug: true, name: true } }),
+  ]);
 
   const kindMap = new Map<string, number>();
   const cityMap = new Map<string, number>();
   const districtMap = new Map<string, number>();
+  const mainMap = new Map<string, number>();
+  const tagMap = new Map<string, number>();
 
   for (const v of venues) {
     const k = v.kind ?? "OTHER";
@@ -95,6 +125,12 @@ export async function getPlacesFilterMeta(active?: {
     cityMap.set(v.city, (cityMap.get(v.city) ?? 0) + 1);
     if (v.district && (!active?.city || v.city.toLowerCase() === active.city.toLowerCase())) {
       districtMap.set(v.district, (districtMap.get(v.district) ?? 0) + 1);
+    }
+    if (v.placesMainCategory) {
+      mainMap.set(v.placesMainCategory.slug, (mainMap.get(v.placesMainCategory.slug) ?? 0) + 1);
+    }
+    for (const t of v.tags) {
+      tagMap.set(t.tag.slug, (tagMap.get(t.tag.slug) ?? 0) + 1);
     }
   }
 
@@ -107,6 +143,16 @@ export async function getPlacesFilterMeta(active?: {
         count,
       }))
       .sort((a, b) => b.count - a.count),
+    mains: mains.map((m) => ({
+      slug: m.slug,
+      name: m.name,
+      count: mainMap.get(m.slug) ?? 0,
+    })),
+    tags: tags.map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      count: tagMap.get(t.slug) ?? 0,
+    })),
     cities: Array.from(cityMap.entries())
       .map(([city, count]) => ({ city, count }))
       .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city)),
@@ -126,6 +172,22 @@ async function fetchPublishedVenueCards(filter?: PlacesFilter): Promise<VenueCar
     where: {
       ...publicVenueWhere,
       ...(filter?.kind ? { kind: filter.kind } : {}),
+      ...(filter?.mainCategorySlug
+        ? {
+            OR: [
+              { placesMainCategory: { slug: filter.mainCategorySlug } },
+              { placesSubCategory: { parent: { slug: filter.mainCategorySlug } } },
+            ],
+          }
+        : {}),
+      ...(filter?.subCategorySlug ? { placesSubCategory: { slug: filter.subCategorySlug } } : {}),
+      ...(filter?.tagSlugs?.length
+        ? {
+            AND: filter.tagSlugs.map((slug) => ({
+              tags: { some: { tag: { slug } } },
+            })),
+          }
+        : {}),
       ...(filter?.city ? { city: { equals: filter.city, mode: "insensitive" as const } } : {}),
       ...(filter?.district
         ? { district: { equals: filter.district, mode: "insensitive" as const } }

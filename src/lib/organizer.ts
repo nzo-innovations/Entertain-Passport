@@ -37,6 +37,17 @@ export async function ensureOrganizerOrganization(): Promise<void> {
 
   const rawType = (meta.orgType as string) ?? session.role;
   const orgType = VALID_ORG_TYPES.has(rawType) ? rawType : OrgType.ORGANIZER;
+  const isBusinessOwner = orgType === OrgType.BUSINESS_OWNER;
+  const placesMainCategoryId = (meta.placesMainCategoryId as string) || null;
+  const placesSubCategoryId = (meta.placesSubCategoryId as string) || null;
+  let placesTagIds: string[] = [];
+  try {
+    const parsed = JSON.parse((meta.placesTagIds as string) || "[]");
+    if (Array.isArray(parsed)) placesTagIds = parsed.filter((x) => typeof x === "string");
+  } catch {
+    placesTagIds = [];
+  }
+
   const fallbackName =
     (meta.orgName as string) ||
     (meta.name as string)?.trim() ||
@@ -55,7 +66,14 @@ export async function ensureOrganizerOrganization(): Promise<void> {
       slug,
       type: orgType,
       ownerId: user.id,
+      accessShows: true,
+      accessPlaces: isBusinessOwner,
+      placesMainCategoryId: isBusinessOwner ? placesMainCategoryId : null,
+      placesSubCategoryId: isBusinessOwner ? placesSubCategoryId : null,
       members: { create: { userId: user.id, role: "OWNER" } },
+      ...(isBusinessOwner && placesTagIds.length
+        ? { tags: { create: placesTagIds.map((tagId) => ({ tagId })) } }
+        : {}),
     },
   });
 }

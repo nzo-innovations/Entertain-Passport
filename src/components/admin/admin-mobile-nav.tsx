@@ -13,6 +13,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  Sparkles,
   Tag,
   Users,
 } from "lucide-react";
@@ -26,6 +27,7 @@ export function AdminMobileNav({ pendingCount }: { pendingCount: number }) {
     { label: "Organizations", href: "/admin/organizations", icon: Users },
     { label: "Gate staff", href: "/admin/gate-staff", icon: ScanLine },
     { label: "Passports (RFID)", href: "/admin/rfid", icon: CreditCard },
+    { label: "Loyalty & rewards", href: "/admin/loyalty", icon: Sparkles },
     { label: "Verification API", href: "/admin/api", icon: ShieldCheck },
     { label: "Categories", href: "/admin/categories", icon: Tag },
     { label: "Venues", href: "/admin/venues", icon: MapPinned },

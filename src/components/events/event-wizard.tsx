@@ -33,7 +33,9 @@ import {
   formatMoneyMajor,
 } from "@/lib/money";
 import { SRI_LANKA_PROVINCE_NAMES, getDistricts, ENABLED_COUNTRIES } from "@/lib/locations";
-import { NZO_CONTACT_URL } from "@/lib/config";
+import { CategoryTagPicker, type CatalogPick } from "@/components/shared/category-tag-picker";
+import { ROUTES } from "@/lib/config";
+import { resolveLeafCategoryId } from "@/lib/catalog";
 
 const STEPS = ["Basics", "Location", "Media", "Tickets", "Settings", "Review"] as const;
 type Step = (typeof STEPS)[number];
@@ -41,7 +43,9 @@ type Step = (typeof STEPS)[number];
 type Pkg = { name: string; price: number; qtyTotal: number; perks: string };
 
 export type EventWizardProps = {
-  categories: { id: string; name: string }[];
+  categories?: { id: string; name: string }[];
+  showsMains?: { id: string; name: string; slug: string }[];
+  showsTags?: { id: string; name: string; slug: string }[];
   canEditCommission: boolean;
   defaultCommission: number;
   organizations?: { id: string; name: string }[];
@@ -62,7 +66,9 @@ export type EventWizardProps = {
 };
 
 export function EventWizard({
-  categories,
+  categories = [],
+  showsMains = [],
+  showsTags = [],
   canEditCommission,
   defaultCommission,
   organizations,
@@ -81,6 +87,12 @@ export function EventWizard({
   const [shortDescription, setShortDescription] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [categoryId, setCategoryId] = React.useState(categories[0]?.id ?? "");
+  const [showsPick, setShowsPick] = React.useState<CatalogPick>({
+    mainCategoryId: showsMains[0]?.id ?? "",
+    subCategoryId: null,
+    tagIds: [],
+  });
+  const [showsSubs, setShowsSubs] = React.useState<{ id: string; name: string }[]>([]);
   const [currency, setCurrency] = React.useState<string>(DEFAULT_CURRENCY);
   const [organizationId, setOrganizationId] = React.useState(organizations?.[0]?.id ?? "");
   const [date, setDate] = React.useState("");
@@ -109,6 +121,26 @@ export function EventWizard({
   const cur = getCurrency(currency);
   const districts = getDistricts(province);
 
+  React.useEffect(() => {
+    if (!showsPick.mainCategoryId) {
+      setShowsSubs([]);
+      return;
+    }
+    fetch(`/api/catalog/subcategories?mainId=${encodeURIComponent(showsPick.mainCategoryId)}`)
+      .then((r) => r.json())
+      .then((d) => setShowsSubs(d.subcategories ?? []));
+  }, [showsPick.mainCategoryId]);
+
+  const useCatalogPicker = showsMains.length > 0;
+  const resolvedCategoryId = useCatalogPicker
+    ? resolveLeafCategoryId(showsPick.mainCategoryId, showsPick.subCategoryId, showsSubs)
+    : categoryId;
+  const categoryName = useCatalogPicker
+    ? [showsMains.find((m) => m.id === showsPick.mainCategoryId)?.name, showsSubs.find((s) => s.id === showsPick.subCategoryId)?.name]
+        .filter(Boolean)
+        .join(" · ")
+    : categories.find((c) => c.id === categoryId)?.name ?? "";
+
   const next = () => setStep(STEPS[Math.min(stepIndex + 1, STEPS.length - 1)]);
   const prev = () => setStep(STEPS[Math.max(stepIndex - 1, 0)]);
 
@@ -117,8 +149,6 @@ export function EventWizard({
   const updatePackage = (i: number, k: keyof Pkg, v: string | number) =>
     setPackages((p) => p.map((pkg, idx) => (idx === i ? { ...pkg, [k]: v } : pkg)));
   const removePackage = (i: number) => setPackages((p) => p.filter((_, idx) => idx !== i));
-
-  const categoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
 
   const handlePublish = async () => {
     if (images.length === 0) {
@@ -135,7 +165,8 @@ export function EventWizard({
           title,
           shortDescription,
           description,
-          categoryId,
+          categoryId: resolvedCategoryId,
+          tagIds: useCatalogPicker ? showsPick.tagIds : undefined,
           currency,
           date,
           time,
@@ -249,26 +280,37 @@ export function EventWizard({
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <Label>Genre / Category</Label>
-                <Select value={categoryId} onChange={setCategoryId}>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
+              <div className="sm:col-span-2">
+                {useCatalogPicker ? (
+                  <CategoryTagPicker
+                    module="SHOWS"
+                    mains={showsMains}
+                    tags={showsTags}
+                    value={showsPick}
+                    onChange={setShowsPick}
+                    mainLabel="Main category"
+                    subLabel="Subcategory"
+                    supportHref={ROUTES.contact}
+                    supportMessage="Need a category that is not listed?"
+                  />
+                ) : (
+                  <>
+                    <Label>Genre / Category</Label>
+                    <Select value={categoryId} onChange={setCategoryId}>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </>
+                )}
                 <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
                   <Info className="h-3 w-3" />
                   Need a new category?{" "}
-                  <a
-                    href={NZO_CONTACT_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
-                  >
-                    Contact our team <ExternalLink className="h-3 w-3" />
-                  </a>
+                  <Link href={ROUTES.contact} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+                    Contact Support
+                  </Link>
                 </p>
               </div>
               <div>
@@ -515,7 +557,7 @@ export function EventWizard({
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Commission is managed by the nZO platform.{" "}
-                      <a href={NZO_CONTACT_URL} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                      <a href={ROUTES.contact} className="text-primary hover:underline">
                         Contact us
                       </a>{" "}
                       to discuss your rate.

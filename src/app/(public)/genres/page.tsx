@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { CategoryStrip } from "@/components/marketing/category-strip";
-import { getCategoriesWithCounts } from "@/lib/events";
+import { GenreCategoryTree } from "@/components/marketing/genre-category-tree";
+import { getShowsCategoryTreeWithCounts } from "@/lib/events";
 
 export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Genres - Browse by category",
 };
 
 export default async function GenresPage() {
-  const categories = await getCategoriesWithCounts();
+  const mains = await getShowsCategoryTreeWithCounts();
 
   return (
     <div className="container space-y-10 py-12">
@@ -18,11 +19,11 @@ export default async function GenresPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Genres</p>
         <h1 className="font-display text-3xl font-bold sm:text-4xl">Browse by category</h1>
         <p className="text-muted-foreground">
-          Pick a genre to explore every show in that category.
+          Pick a main category, then a subcategory, to explore shows in that genre.
         </p>
       </header>
 
-      <CategoryStrip items={categories} />
+      <GenreCategoryTree mains={mains} />
 
       <div>
         <Link

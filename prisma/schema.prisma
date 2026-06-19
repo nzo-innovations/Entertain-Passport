@@ -51,6 +51,9 @@ model User {
   passports          RfidCard[]           @relation("UserPassports")
   programmedCards    RfidCard[]           @relation("PassportProgrammer")
   soldPhysicalTickets PhysicalTicket[]    @relation("PhysicalTicketSeller")
+  loyaltyOffersCreated LoyaltyOffer[]     @relation("LoyaltyOfferCreator")
+  loyaltyOfferGrants   LoyaltyOfferGrant[] @relation("LoyaltyOfferGrantUser")
+  loyaltyGrantsIssued  LoyaltyOfferGrant[] @relation("LoyaltyOfferGranter")
 }
 
 model Address {
@@ -83,6 +86,14 @@ model Organization {
   // Per-organization commission override set by Super Admin. When null the
   // platform default (PlatformSettings.defaultCommissionPct) applies.
   commissionPct Float?
+  // Company / venue owners: Places to Go registration selections.
+  placesMainCategoryId String?
+  placesMainCategory   Category? @relation("OrgPlacesMain", fields: [placesMainCategoryId], references: [id], onDelete: SetNull)
+  placesSubCategoryId  String?
+  placesSubCategory    Category? @relation("OrgPlacesSub", fields: [placesSubCategoryId], references: [id], onDelete: SetNull)
+  accessShows          Boolean   @default(true)
+  accessPlaces         Boolean   @default(false)
+  tags                 OrganizationTag[]
   ownerId     String
   owner       User     @relation("OrgOwner", fields: [ownerId], references: [id])
   members     OrganizationMember[]
@@ -107,17 +118,70 @@ model OrganizationMember {
 
 // ----- Catalog ----------------------------------------------------------------
 
+// Hierarchical taxonomy for Discover & Shows and Places to Go.
+// parentId null = main category; non-null = subcategory under that main.
 model Category {
   id        String     @id @default(cuid())
-  name      String     @unique
-  slug      String     @unique
+  module    String     @default("SHOWS") // SHOWS | PLACES
+  name      String
+  slug      String
   iconKey   String?
   imageUrl  String?
+  sortOrder Int        @default(0)
   parentId  String?
   parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryTree")
   events    Event[]
+  venuesMain Venue[]   @relation("VenuePlacesMain")
+  venuesSub  Venue[]   @relation("VenuePlacesSub")
+  orgsMain   Organization[] @relation("OrgPlacesMain")
+  orgsSub    Organization[] @relation("OrgPlacesSub")
   createdAt DateTime   @default(now())
+
+  @@unique([module, slug])
+  @@index([module, parentId, sortOrder])
+}
+
+// Reusable labels for both modules (multi-select on events, venues, org signup).
+model Tag {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  sortOrder   Int      @default(0)
+  modulesJson String   @default("[\"SHOWS\",\"PLACES\"]")
+  createdAt   DateTime @default(now())
+  events      EventTag[]
+  venues      VenueTag[]
+  orgs        OrganizationTag[]
+}
+
+model EventTag {
+  eventId String
+  tagId   String
+  event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, tagId])
+  @@index([tagId])
+}
+
+model VenueTag {
+  venueId String
+  tagId   String
+  venue   Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([venueId, tagId])
+  @@index([tagId])
+}
+
+model OrganizationTag {
+  organizationId String
+  tagId          String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tag            Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, tagId])
 }
 
 model Venue {
@@ -145,6 +209,11 @@ model Venue {
   isPublished Boolean     @default(false)
   organizationId String?
   organization   Organization? @relation("OrgVenues", fields: [organizationId], references: [id], onDelete: SetNull)
+  placesMainCategoryId String?
+  placesMainCategory   Category? @relation("VenuePlacesMain", fields: [placesMainCategoryId], references: [id], onDelete: SetNull)
+  placesSubCategoryId  String?
+  placesSubCategory    Category? @relation("VenuePlacesSub", fields: [placesSubCategoryId], references: [id], onDelete: SetNull)
+  tags        VenueTag[]
   events      Event[]
   seatPrices  SeatPrice[]
   programs    VenueProgram[]
@@ -237,6 +306,7 @@ model Event {
   approvalLogs   EventApprovalLog[]
   artists        EventArtist[]
   physicalTickets PhysicalTicket[]
+  tags           EventTag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -436,6 +506,7 @@ model RfidCard {
   programmedById String?
   programmedBy   User?     @relation("PassportProgrammer", fields: [programmedById], references: [id], onDelete: SetNull)
   tickets        Ticket[]
+  offerGrants    LoyaltyOfferGrant[]
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -467,6 +538,61 @@ model LoyaltyEntry {
   reason    String
   refId     String?
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// Super-Admin managed member offer (bonus points, perks, targeted campaigns).
+model LoyaltyOffer {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  kind        String    @default("GRANT_POINTS") // GRANT_POINTS | PERK
+  pointsGrant Int       @default(0)
+  pointCost   Int?
+  status      String    @default("DRAFT") // DRAFT | ACTIVE | PAUSED | ENDED
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  // ALL_CARDS = every active passport holder; FILTERED = must match usage/points rules.
+  audienceMode String @default("ALL_CARDS")
+
+  minTotalUsage    Int?
+  maxTotalUsage    Int?
+  minLoyaltyPoints Int?
+  maxLoyaltyPoints Int?
+  passportNosJson  String? // JSON string[] — optional explicit allow-list
+
+  maxTotalGrants   Int?
+  maxGrantsPerUser Int? @default(1)
+  grantsCount      Int  @default(0)
+
+  createdById String?
+  createdBy   User?    @relation("LoyaltyOfferCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  grants      LoyaltyOfferGrant[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, startsAt])
+}
+
+model LoyaltyOfferGrant {
+  id            String      @id @default(cuid())
+  offerId       String
+  offer         LoyaltyOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation("LoyaltyOfferGrantUser", fields: [userId], references: [id], onDelete: Cascade)
+  rfidCardId    String?
+  rfidCard      RfidCard?   @relation(fields: [rfidCardId], references: [id], onDelete: SetNull)
+  pointsGranted Int         @default(0)
+  note          String?
+  grantedById   String?
+  grantedBy     User?       @relation("LoyaltyOfferGranter", fields: [grantedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+
+  @@index([offerId, createdAt(sort: Desc)])
+  @@index([userId, offerId])
 }
 
 // ----- Admin / Ops ------------------------------------------------------------
@@ -498,5 +624,11 @@ model PlatformSettings {
   defaultCommissionPct  Float  @default(5)
   freeStaffPerEvent     Int    @default(2)
   extraStaffMonthlyFee  Int    @default(1500) // cents per extra staff slot
+
+  // Loyalty earn rules (Super-Admin controlled).
+  loyaltyEnabled           Boolean @default(true)
+  loyaltyRequiresPassport  Boolean @default(true)
+  loyaltyMinorPerPoint     Int     @default(10000) // minor units spent per 1 point (LKR 100)
+
   updatedAt             DateTime @updatedAt
 }

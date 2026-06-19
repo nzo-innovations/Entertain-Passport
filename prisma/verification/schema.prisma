@@ -167,11 +167,14 @@ model ApiRequestLog {
   billable    Boolean  @default(false)
   priceMinor  Int      @default(0)
   reason      String?
+  // Set on successful taps — used for loyalty usage counts (never returned to partners).
+  passportNo  String?
   createdAt   DateTime @default(now())
 
   @@index([apiClientId, createdAt])
   @@index([partnerId, createdAt])
   @@index([verdict, createdAt])
+  @@index([passportNo, createdAt])
 }
 
 // ----- Monthly usage rollup (billing) -----------------------------------------

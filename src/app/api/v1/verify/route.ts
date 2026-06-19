@@ -87,6 +87,7 @@ export async function POST(req: Request) {
     billable: outcome.billable,
     limits: auth.limits,
     reason: outcome.reason,
+    passportNo: outcome.passportNo,
   });
 
   return NextResponse.json(

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { VenueManager } from "@/components/portal/venue-manager";
 import { getSession } from "@/lib/auth";
 import { canManageOrgVenue, getOrgVenueForUser } from "@/lib/venues";
+import { getMainCategories, getTagsForModule, CatalogModule } from "@/lib/catalog";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,11 @@ export default async function PortalVenuePage() {
 
   if (!org) redirect("/portal");
 
+  const [placesMains, placesTags] = await Promise.all([
+    getMainCategories(CatalogModule.PLACES),
+    getTagsForModule(CatalogModule.PLACES),
+  ]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -33,7 +39,7 @@ export default async function PortalVenuePage() {
           same organizer account.
         </p>
       </div>
-      <VenueManager orgName={org.name} />
+      <VenueManager orgName={org.name} placesMains={placesMains} placesTags={placesTags} />
     </div>
   );
 }

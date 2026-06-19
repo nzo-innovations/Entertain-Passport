@@ -203,3 +203,24 @@ export function isPublicEvent(event: {
 }
 
 export const FREE_STAFF_PER_EVENT = 2;
+
+export const LoyaltyOfferStatus = {
+  DRAFT: "DRAFT",
+  ACTIVE: "ACTIVE",
+  PAUSED: "PAUSED",
+  ENDED: "ENDED",
+} as const;
+export type LoyaltyOfferStatus = (typeof LoyaltyOfferStatus)[keyof typeof LoyaltyOfferStatus];
+
+export const LoyaltyAudienceMode = {
+  ALL_CARDS: "ALL_CARDS",
+  FILTERED: "FILTERED",
+} as const;
+export type LoyaltyAudienceMode = (typeof LoyaltyAudienceMode)[keyof typeof LoyaltyAudienceMode];
+
+export const LOYALTY_OFFER_STATUS_LABELS: Record<LoyaltyOfferStatus, string> = {
+  DRAFT: "Draft",
+  ACTIVE: "Active",
+  PAUSED: "Paused",
+  ENDED: "Ended",
+};

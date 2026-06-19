@@ -39,6 +39,7 @@ const schema = z.object({
       })
     )
     .min(1),
+  tagIds: z.array(z.string()).max(24).optional(),
 });
 
 export async function POST(req: Request) {
