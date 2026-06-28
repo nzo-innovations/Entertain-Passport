@@ -10,7 +10,12 @@ import { useToast } from "@/components/ui/use-toast";
 export function SettingsForm({
   initial,
 }: {
-  initial: { defaultCommissionPct: number; freeStaffPerEvent: number; extraStaffMonthlyFee: number };
+  initial: {
+    defaultCommissionPct: number;
+    freeStaffPerEvent: number;
+    extraStaffMonthlyFee: number;
+    passportCardPrice: number;
+  };
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -18,6 +23,7 @@ export function SettingsForm({
   const [freeStaff, setFreeStaff] = React.useState(initial.freeStaffPerEvent);
   // Stored in cents; edit in major LKR units.
   const [extraFee, setExtraFee] = React.useState(initial.extraStaffMonthlyFee / 100);
+  const [cardPrice, setCardPrice] = React.useState(initial.passportCardPrice / 100);
   const [saving, setSaving] = React.useState(false);
 
   const save = async () => {
@@ -30,6 +36,7 @@ export function SettingsForm({
           defaultCommissionPct: Number(commission),
           freeStaffPerEvent: Math.round(Number(freeStaff)),
           extraStaffMonthlyFee: Math.round(Number(extraFee) * 100),
+          passportCardPrice: Math.round(Number(cardPrice) * 100),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -91,6 +98,23 @@ export function SettingsForm({
               onChange={(e) => setExtraFee(Number(e.target.value))}
             />
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border bg-card p-6">
+        <h2 className="font-display text-lg font-semibold">Entertain Passport cards</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Customer order/reorder price for the physical Entertain Passport card.
+        </p>
+        <div className="mt-4 max-w-xs">
+          <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Card price (LKR)
+          </label>
+          <Input
+            type="number"
+            value={cardPrice}
+            onChange={(e) => setCardPrice(Number(e.target.value))}
+          />
         </div>
       </section>
 

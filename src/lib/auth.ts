@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { db } from "./db";
 import { UserRole, isCreatorRole } from "./types";
 import { createSupabaseServerClient } from "./supabase/server";
+import { isIdentityType, validateIdentity, type IdentityType } from "./identity";
 
 export type SessionUser = {
   id: string;
@@ -12,7 +13,7 @@ export type SessionUser = {
   avatarUrl: string | null;
 };
 
-/** One Supabase auth lookup per request — shared by getSession, getUserRole, getAuthUserId. */
+/** One Supabase auth lookup per request - shared by getSession, getUserRole, getAuthUserId. */
 const getSupabaseUser = cache(async (): Promise<User | null> => {
   const supabase = createSupabaseServerClient();
   const {
@@ -20,6 +21,78 @@ const getSupabaseUser = cache(async (): Promise<User | null> => {
   } = await supabase.auth.getUser();
   return user;
 });
+
+function metadataString(meta: User["user_metadata"], key: string): string | null {
+  const value = meta?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function backfillCustomerProfileFromMetadata(
+  authUser: User,
+  profile: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    avatarUrl: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    nic: string | null;
+    idType: string | null;
+    idNumber: string | null;
+  }
+) {
+  const firstName = metadataString(authUser.user_metadata, "firstName");
+  const lastName = metadataString(authUser.user_metadata, "lastName");
+  const metadataName = metadataString(authUser.user_metadata, "name");
+  const metadataIdType = metadataString(authUser.user_metadata, "idType");
+  const idType: IdentityType = isIdentityType(metadataIdType) ? metadataIdType : "NIC";
+  const rawIdNumber =
+    metadataString(authUser.user_metadata, "idNumber") ??
+    (idType === "NIC"
+      ? metadataString(authUser.user_metadata, "nic")
+      : metadataString(authUser.user_metadata, "passportNumber"));
+  const identity = rawIdNumber ? validateIdentity(idType, rawIdNumber) : null;
+  const idNumber = identity?.ok ? identity.normalized : null;
+
+  const data: Record<string, string> = {};
+  if (firstName && !profile.firstName) data.firstName = firstName;
+  if (lastName && !profile.lastName) data.lastName = lastName;
+  if (!profile.name) {
+    const fullName = metadataName ?? [firstName, lastName].filter(Boolean).join(" ");
+    if (fullName) data.name = fullName;
+  }
+  if (idNumber && idType === "NIC" && !profile.nic) data.nic = idNumber;
+  if (idNumber && (!profile.idType || !profile.idNumber)) {
+    data.idType = idType;
+    data.idNumber = idNumber;
+  }
+
+  if (Object.keys(data).length === 0) return profile;
+
+  try {
+    const updated = await db.user.update({
+      where: { id: profile.id },
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        avatarUrl: true,
+        firstName: true,
+        lastName: true,
+        nic: true,
+        idType: true,
+        idNumber: true,
+      },
+    });
+    return updated;
+  } catch (err) {
+    console.warn("Could not backfill auth metadata into profile", err);
+    return profile;
+  }
+}
 
 /**
  * Returns the authenticated user (Supabase Auth + profile row).
@@ -31,7 +104,18 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
 
   const profile = await db.user.findUnique({
     where: { id: user.id },
-    select: { id: true, email: true, name: true, role: true, avatarUrl: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      avatarUrl: true,
+      firstName: true,
+      lastName: true,
+      nic: true,
+      idType: true,
+      idNumber: true,
+    },
   });
 
   if (!profile) {
@@ -44,10 +128,10 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
     };
   }
 
-  return profile;
+  return backfillCustomerProfileFromMetadata(user, profile);
 });
 
-/** Fast path for login door checks — role column only, no full profile. */
+/** Fast path for login door checks - role column only, no full profile. */
 export const getUserRole = cache(async (): Promise<string | null> => {
   const user = await getSupabaseUser();
   if (!user) return null;
@@ -86,7 +170,7 @@ export function isCreator(user: SessionUser | null): boolean {
   return isCreatorRole(user?.role);
 }
 
-/** @deprecated Prefer `isCreator` — kept for call sites that still use the old name. */
+/** @deprecated Prefer `isCreator` - kept for call sites that still use the old name. */
 export function isOrganizer(user: SessionUser | null): boolean {
   return isCreatorRole(user?.role);
 }

@@ -49,7 +49,7 @@ export async function processImageForUpload(
 
   if (width < rules.minWidth || height < rules.minHeight) {
     throw new ImageProcessError(
-      `${rules.label} is too small. Minimum ${rules.minWidth}×${rules.minHeight}px — yours is ${width}×${height}px. Use a higher-resolution photo.`
+      `${rules.label} is too small. Minimum ${rules.minWidth}×${rules.minHeight}px - yours is ${width}×${height}px. Use a higher-resolution photo.`
     );
   }
 

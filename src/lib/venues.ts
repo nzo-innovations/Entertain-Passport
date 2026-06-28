@@ -2,7 +2,7 @@ import { PLACES_MAIN_SLUGS } from "./category-tags";
 import { db } from "./db";
 import { slugify } from "./utils";
 import { unstable_cache } from "next/cache";
-import { ApprovalStatus, EventStatus, OrgMemberRole, UserRole, VENUE_KIND_LABELS, isCreatorRole } from "./types";
+import { OrgMemberRole, UserRole, VENUE_KIND_LABELS, isCreatorRole } from "./types";
 import type { SessionUser } from "./auth";
 
 export const publicVenueWhere = {
@@ -20,11 +20,13 @@ export type VenueCardData = {
   coverImageUrl: string | null;
   description: string | null;
   programCount: number;
-  upcomingEventCount: number;
+  postCount: number;
 };
 
 const FALLBACK_COVER =
   "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=1600&q=80";
+
+export { FALLBACK_COVER };
 
 export async function uniqueVenueSlug(name: string, excludeId?: string): Promise<string> {
   const base = slugify(name) || `venue-${Date.now()}`;
@@ -48,9 +50,9 @@ export type PlacesFilter = {
   search?: string;
   /** Has published weekly / one-off program entries */
   live?: boolean;
-  /** Has upcoming approved ticketed events */
-  tickets?: boolean;
-  sort?: "name" | "programs" | "events";
+  /** Has recent published news / updates */
+  updates?: boolean;
+  sort?: "name" | "programs" | "posts";
 };
 
 export type PlacesFilterMeta = {
@@ -62,10 +64,62 @@ export type PlacesFilterMeta = {
   districts: { district: string; count: number }[];
 };
 
-const upcomingEventWhere = {
-  status: EventStatus.PUBLISHED,
-  approvalStatus: ApprovalStatus.APPROVED,
-  startsAt: { gte: new Date() },
+export type PlacesCategoryTreeItem = {
+  name: string;
+  slug: string;
+  count: number;
+  subs: { name: string; slug: string; count: number }[];
+};
+
+async function fetchPlacesCategoryTreeWithCounts(): Promise<PlacesCategoryTreeItem[]> {
+  const cats = await db.category.findMany({
+    where: { module: "PLACES", parentId: null, slug: { in: [...PLACES_MAIN_SLUGS] } },
+    select: {
+      name: true,
+      slug: true,
+      children: {
+        select: {
+          name: true,
+          slug: true,
+          _count: { select: { venuesSub: { where: publicVenueWhere } } },
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      },
+      _count: { select: { venuesMain: { where: publicVenueWhere } } },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+  });
+
+  return cats.map((c) => {
+    const subs = c.children.map((ch) => ({
+      name: ch.name,
+      slug: ch.slug,
+      count: ch._count.venuesSub,
+    }));
+    const subCount = subs.reduce((s, ch) => s + ch.count, 0);
+    return {
+      name: c.name,
+      slug: c.slug,
+      count: c._count.venuesMain + subCount,
+      subs,
+    };
+  });
+}
+
+const cachedPlacesCategoryTree = unstable_cache(fetchPlacesCategoryTreeWithCounts, ["places-category-tree"], {
+  revalidate: 60,
+  tags: ["venues", "categories"],
+});
+
+export async function getPlacesCategoryTreeWithCounts() {
+  return cachedPlacesCategoryTree();
+}
+
+export const publishedPostWhere = { isPublished: true };
+
+export const recentPostWhere = {
+  ...publishedPostWhere,
+  publishedAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
 };
 
 export async function getPlacesFilterMeta(active?: {
@@ -100,7 +154,7 @@ export async function getPlacesFilterMeta(active?: {
         _count: {
           select: {
             programs: { where: { isPublished: true } },
-            events: { where: upcomingEventWhere },
+            posts: { where: recentPostWhere },
           },
         },
       },
@@ -167,57 +221,61 @@ export async function getPublishedVenueCards(filter?: PlacesFilter): Promise<Ven
   return cachedVenueCards(key);
 }
 
+export function buildPlacesVenueWhere(filter?: PlacesFilter) {
+  return {
+    ...publicVenueWhere,
+    ...(filter?.kind ? { kind: filter.kind } : {}),
+    ...(filter?.mainCategorySlug
+      ? {
+          OR: [
+            { placesMainCategory: { slug: filter.mainCategorySlug } },
+            { placesSubCategory: { parent: { slug: filter.mainCategorySlug } } },
+          ],
+        }
+      : {}),
+    ...(filter?.subCategorySlug ? { placesSubCategory: { slug: filter.subCategorySlug } } : {}),
+    ...(filter?.tagSlugs?.length
+      ? {
+          AND: filter.tagSlugs.map((slug) => ({
+            tags: { some: { tag: { slug } } },
+          })),
+        }
+      : {}),
+    ...(filter?.city ? { city: { equals: filter.city, mode: "insensitive" as const } } : {}),
+    ...(filter?.district
+      ? { district: { equals: filter.district, mode: "insensitive" as const } }
+      : {}),
+    ...(filter?.live ? { programs: { some: { isPublished: true } } } : {}),
+    ...(filter?.updates ? { posts: { some: recentPostWhere } } : {}),
+    ...(filter?.search
+      ? {
+          OR: [
+            { name: { contains: filter.search, mode: "insensitive" as const } },
+            { description: { contains: filter.search, mode: "insensitive" as const } },
+            { city: { contains: filter.search, mode: "insensitive" as const } },
+            { district: { contains: filter.search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+}
+
 async function fetchPublishedVenueCards(filter?: PlacesFilter): Promise<VenueCardData[]> {
   const venues = await db.venue.findMany({
-    where: {
-      ...publicVenueWhere,
-      ...(filter?.kind ? { kind: filter.kind } : {}),
-      ...(filter?.mainCategorySlug
-        ? {
-            OR: [
-              { placesMainCategory: { slug: filter.mainCategorySlug } },
-              { placesSubCategory: { parent: { slug: filter.mainCategorySlug } } },
-            ],
-          }
-        : {}),
-      ...(filter?.subCategorySlug ? { placesSubCategory: { slug: filter.subCategorySlug } } : {}),
-      ...(filter?.tagSlugs?.length
-        ? {
-            AND: filter.tagSlugs.map((slug) => ({
-              tags: { some: { tag: { slug } } },
-            })),
-          }
-        : {}),
-      ...(filter?.city ? { city: { equals: filter.city, mode: "insensitive" as const } } : {}),
-      ...(filter?.district
-        ? { district: { equals: filter.district, mode: "insensitive" as const } }
-        : {}),
-      ...(filter?.live ? { programs: { some: { isPublished: true } } } : {}),
-      ...(filter?.tickets ? { events: { some: upcomingEventWhere } } : {}),
-      ...(filter?.search
-        ? {
-            OR: [
-              { name: { contains: filter.search, mode: "insensitive" as const } },
-              { description: { contains: filter.search, mode: "insensitive" as const } },
-              { city: { contains: filter.search, mode: "insensitive" as const } },
-              { district: { contains: filter.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-    },
+    where: buildPlacesVenueWhere(filter),
     include: {
       _count: {
         select: {
           programs: { where: { isPublished: true } },
-          events: { where: upcomingEventWhere },
+          posts: { where: recentPostWhere },
         },
       },
     },
     orderBy:
       filter?.sort === "programs"
         ? [{ programs: { _count: "desc" } }, { name: "asc" }]
-        : filter?.sort === "events"
-        ? [{ events: { _count: "desc" } }, { name: "asc" }]
+        : filter?.sort === "posts"
+        ? [{ posts: { _count: "desc" } }, { name: "asc" }]
         : [{ name: "asc" }],
   });
 
@@ -230,7 +288,7 @@ async function fetchPublishedVenueCards(filter?: PlacesFilter): Promise<VenueCar
     coverImageUrl: v.coverImageUrl ?? FALLBACK_COVER,
     description: v.description,
     programCount: v._count.programs,
-    upcomingEventCount: v._count.events,
+    postCount: v._count.posts,
   }));
 }
 
@@ -253,20 +311,10 @@ export async function getVenueDetailBySlug(slug: string) {
         where: { isPublished: true },
         orderBy: [{ dayOfWeek: "asc" }, { sortOrder: "asc" }, { startTime: "asc" }],
       },
-      events: {
-        where: {
-          status: EventStatus.PUBLISHED,
-          approvalStatus: ApprovalStatus.APPROVED,
-          startsAt: { gte: new Date() },
-        },
-        include: {
-          primaryImage: true,
-          images: { orderBy: { sortOrder: "asc" }, take: 1 },
-          category: true,
-          packages: { orderBy: { price: "asc" }, take: 1 },
-        },
-        orderBy: { startsAt: "asc" },
-        take: 12,
+      posts: {
+        where: publishedPostWhere,
+        orderBy: [{ publishedAt: "desc" }, { sortOrder: "asc" }],
+        take: 24,
       },
     },
   });
@@ -321,5 +369,3 @@ export async function canManageOrgVenue(user: SessionUser) {
   // Legacy accounts may still have role ORGANIZER with a BUSINESS_OWNER org.
   return row.org.type === "BUSINESS_OWNER";
 }
-
-export { FALLBACK_COVER };

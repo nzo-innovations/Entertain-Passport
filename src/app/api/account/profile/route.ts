@@ -2,14 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { validateIdentity } from "@/lib/identity";
 
 const schema = z.object({
-  name: z.string().trim().min(1).max(120),
+  firstName: z.string().trim().min(1).max(60),
+  lastName: z.string().trim().min(1).max(60),
+  idType: z.enum(["NIC", "PASSPORT"]).optional().default("NIC"),
+  idNumber: z.string().trim().min(1).max(40).optional(),
+  nic: z.string().trim().max(30).optional(),
   phone: z.string().trim().max(30).optional().or(z.literal("")),
   gender: z.enum(["MALE", "FEMALE", "OTHER", "PREFER_NOT_TO_SAY"]).optional().or(z.literal("")),
   birthday: z.string().optional().or(z.literal("")),
-  idType: z.enum(["NIC", "PASSPORT"]).optional().or(z.literal("")),
-  idNumber: z.string().trim().max(40).optional().or(z.literal("")),
   address: z
     .object({
       line1: z.string().trim().max(160).optional().or(z.literal("")),
@@ -36,17 +39,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid profile data." }, { status: 400 });
   }
   const d = parsed.data;
+  const identityCheck = validateIdentity(d.idType, d.idNumber || d.nic || "");
+  if (!identityCheck.ok) {
+    return NextResponse.json(
+      { error: identityCheck.error ?? "Enter a valid identity number." },
+      { status: 400 }
+    );
+  }
 
   try {
     await db.user.update({
       where: { id: session.id },
       data: {
-        name: d.name.trim(),
+        firstName: d.firstName.trim(),
+        lastName: d.lastName.trim(),
+        name: `${d.firstName.trim()} ${d.lastName.trim()}`,
+        nic: d.idType === "NIC" ? identityCheck.normalized : null,
         phone: clean(d.phone),
         gender: clean(d.gender),
         birthday: d.birthday ? new Date(d.birthday) : null,
-        idType: clean(d.idType),
-        idNumber: clean(d.idNumber),
+        idType: d.idType,
+        idNumber: identityCheck.normalized,
       },
     });
 
@@ -77,7 +90,7 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err && typeof err === "object" && "code" in err && (err as { code?: string }).code === "P2002") {
       return NextResponse.json(
-        { error: "That phone number is already linked to another account." },
+        { error: "That NIC, passport number or phone number is already linked to another account." },
         { status: 409 }
       );
     }

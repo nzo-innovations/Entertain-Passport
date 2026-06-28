@@ -8,8 +8,8 @@
 // older versions decryptable, so previously issued cards keep working.
 //
 // Providers:
-//   * "local"  — dev only. Master key from VERIFY_LOCAL_MASTER_KEY (base64 32B).
-//   * "aws-kms"/"vault" — production seams (throw until wired to the SDK).
+//   * "local"  - dev only. Master key from VERIFY_LOCAL_MASTER_KEY (base64 32B).
+//   * "aws-kms"/"vault" - production seams (throw until wired to the SDK).
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 
 export type KmsProviderId = "local" | "aws-kms" | "vault";

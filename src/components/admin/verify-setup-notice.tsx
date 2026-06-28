@@ -19,8 +19,8 @@ export function VerifySetupNotice() {
           section works. From the project root run:
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg bg-background p-4 text-xs">
-{`# 1. Point VERIFY_DATABASE_URL / VERIFY_DIRECT_URL at a DEDICATED database
-#    (a separate Supabase project with no access to core sales data).
+{`# Verify project: vzvxphcdcmahwwgadrlp (Mumbai) - see docs/SUPABASE.md
+# 1. Point VERIFY_DATABASE_URL (6543) / VERIFY_DIRECT_URL (5432) at that project
 # 2. Create the schema + seed default pricing plans:
 npm run db:push:verify
 npm run db:seed:verify`}

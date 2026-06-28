@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { MapPin, Music2, Ticket } from "lucide-react";
+import { MapPin, Music2, Newspaper } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { VENUE_KIND_LABELS, type VenueKind } from "@/lib/types";
 import type { VenueCardData } from "@/lib/venues";
@@ -46,10 +46,10 @@ export function VenueCard({ venue }: { venue: VenueCardData }) {
               {venue.programCount} weekly {venue.programCount === 1 ? "night" : "nights"}
             </span>
           )}
-          {venue.upcomingEventCount > 0 && (
+          {venue.postCount > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              <Ticket className="h-3 w-3" />
-              {venue.upcomingEventCount} ticketed {venue.upcomingEventCount === 1 ? "show" : "shows"}
+              <Newspaper className="h-3 w-3" />
+              {venue.postCount} recent {venue.postCount === 1 ? "update" : "updates"}
             </span>
           )}
         </div>

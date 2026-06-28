@@ -147,7 +147,7 @@ export function PhysicalTicketReport({ eventId }: { eventId: string }) {
                             Sold ({b.sold.length})
                           </p>
                           <p className="mt-1 break-words font-mono text-xs text-muted-foreground">
-                            {b.sold.length ? b.sold.join(", ") : "—"}
+                            {b.sold.length ? b.sold.join(", ") : "-"}
                           </p>
                         </div>
                         <div>
@@ -155,7 +155,7 @@ export function PhysicalTicketReport({ eventId }: { eventId: string }) {
                             Remaining ({b.available.length})
                           </p>
                           <p className="mt-1 break-words font-mono text-xs text-muted-foreground">
-                            {b.available.length ? b.available.join(", ") : "—"}
+                            {b.available.length ? b.available.join(", ") : "-"}
                           </p>
                         </div>
                       </div>

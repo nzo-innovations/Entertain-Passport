@@ -3,14 +3,18 @@ import { Suspense } from "react";
 import { ArrowRight, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VenueCard } from "@/components/venues/venue-card";
+import { PlacesAgendaView } from "@/components/venues/places-agenda-view";
 import { PlacesFilterBar } from "@/components/venues/places-filter-bar";
-import { getPlacesFilterMeta, getPublishedVenueCards, type PlacesFilter } from "@/lib/venues";
+import { getPlacesAgenda } from "@/lib/places-agenda";
+import { getPlacesCategoryTreeWithCounts, getPlacesFilterMeta, getPublishedVenueCards, type PlacesFilter } from "@/lib/venues";
+import { getTagsForModule, CatalogModule } from "@/lib/catalog";
+import { buildCategoryTagsMap, PLACES_MAIN_SLUGS } from "@/lib/category-tags";
 import { PLACES_LABEL, ROUTES } from "@/lib/config";
 
 export const metadata = {
-  title: `${PLACES_LABEL} — Pubs, cafés, clubs & more`,
+  title: `${PLACES_LABEL} - Pubs, cafés, clubs & more`,
   description:
-    "Browse published pubs, restaurants, coffee shops, clubs and dating spots. Filter by city, type, live music and ticketed nights.",
+    "Browse published pubs, restaurants, coffee shops, clubs and dating spots. Filter by city, live nights and partner updates.",
 };
 
 export const revalidate = 60;
@@ -26,7 +30,7 @@ function parseFilters(searchParams: Record<string, string | undefined>): PlacesF
     city: searchParams.city,
     district: searchParams.district,
     live: searchParams.live === "1",
-    tickets: searchParams.tickets === "1",
+    updates: searchParams.updates === "1",
     sort: (searchParams.sort as PlacesFilter["sort"]) ?? "name",
   };
 }
@@ -37,10 +41,17 @@ export default async function VenuesPage({
   searchParams: Record<string, string | undefined>;
 }) {
   const filters = parseFilters(searchParams);
-  const [venues, meta] = await Promise.all([
+  const view = searchParams.view === "agenda" ? "agenda" : "grid";
+  const [venues, meta, agenda, categoryTree, allTags] = await Promise.all([
     getPublishedVenueCards(filters),
     getPlacesFilterMeta({ city: filters.city, kind: filters.kind, mainCategorySlug: filters.mainCategorySlug }),
+    view === "agenda" ? getPlacesAgenda(filters) : Promise.resolve(null),
+    getPlacesCategoryTreeWithCounts(),
+    getTagsForModule(CatalogModule.PLACES),
   ]);
+
+  const tagRows = allTags.map((t) => ({ slug: t.slug, name: t.name }));
+  const categoryTags = buildCategoryTagsMap(CatalogModule.PLACES, [...PLACES_MAIN_SLUGS], tagRows);
 
   const hasActiveFilters = !!(
     filters.search ||
@@ -51,7 +62,7 @@ export default async function VenuesPage({
     filters.city ||
     filters.district ||
     filters.live ||
-    filters.tickets ||
+    filters.updates ||
     (filters.sort && filters.sort !== "name")
   );
 
@@ -65,15 +76,22 @@ export default async function VenuesPage({
             <span className="gradient-text">places to meet</span>
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
-            Only published listings from verified company owners — weekly live music, hangout info and
-            special ticketed nights.
+            Published listings from verified partners - weekly live music, news and updates about hotels,
+            restaurants and hangout spots.
           </p>
         </div>
       </section>
 
       <section className="container space-y-6">
         <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl border bg-muted/30" />}>
-          <PlacesFilterBar meta={meta} resultCount={venues.length} />
+          <PlacesFilterBar
+            meta={meta}
+            categoryTree={categoryTree}
+            categoryTags={categoryTags}
+            resultCount={venues.length}
+            agendaCount={agenda?.totalItems}
+            view={view}
+          />
         </Suspense>
 
         {venues.length === 0 ? (
@@ -85,7 +103,7 @@ export default async function VenuesPage({
             <p className="mt-1 text-sm text-muted-foreground">
               {hasActiveFilters
                 ? "Try clearing filters or searching a different city or type."
-                : "Check back soon — new pubs, cafés and clubs are added by local owners."}
+                : "Check back soon - new pubs, cafés and clubs are added by local owners."}
             </p>
             {hasActiveFilters && (
               <Button variant="outline" className="mt-6" asChild>
@@ -93,6 +111,8 @@ export default async function VenuesPage({
               </Button>
             )}
           </div>
+        ) : view === "agenda" && agenda ? (
+          <PlacesAgendaView agenda={agenda} venueCount={venues.length} />
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {venues.map((v) => (
@@ -110,7 +130,7 @@ export default async function VenuesPage({
             <p className="mt-2 text-sm text-muted-foreground">
               Sign up or sign in on the <strong className="font-medium text-foreground">organizer portal</strong> as
               a <strong className="font-medium text-foreground">Company / Venue Owner</strong>. Manage your place,
-              weekly program and ticketed events from one account.
+              weekly program and news posts from one account.
             </p>
           </div>
           <Button variant="brand" size="lg" className="mt-6 shrink-0 sm:mt-0" asChild>

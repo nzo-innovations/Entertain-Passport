@@ -157,8 +157,8 @@ export function VerifyDashboard({ data }: { data: Dashboard }) {
                   </td>
                   <td className="px-4 py-2.5 font-mono text-xs">{l.httpStatus}</td>
                   <td className="px-4 py-2.5 text-xs">{l.latencyMs}ms</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{l.ip ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{l.reason ?? "—"}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{l.ip ?? "-"}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{l.reason ?? "-"}</td>
                 </tr>
               ))}
               {data.recentLogs.length === 0 && (

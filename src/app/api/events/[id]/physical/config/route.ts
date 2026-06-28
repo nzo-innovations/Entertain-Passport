@@ -17,7 +17,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   // Only event managers / org admins / Super Admin may toggle the feature or
-  // change the code format — not plain gate staff.
+  // change the code format - not plain gate staff.
   if (!(await canManageEvent(session.id, params.id, session.role))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

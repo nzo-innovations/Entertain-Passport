@@ -1,4 +1,4 @@
-# Entertain Passport — Initial Vercel Deployment Guide
+# Entertain Passport - Initial Vercel Deployment Guide
 
 **For:** First production (or staging) deploy  
 **Stack:** Next.js 14 → **Vercel** · Postgres/Auth/Storage → **Supabase**
@@ -14,7 +14,7 @@
 3. [Step-by-step: first deploy](#3-step-by-step-first-deploy)
 4. [Environment variables (Vercel)](#4-environment-variables-vercel)
 5. [Supabase production settings](#5-supabase-production-settings)
-6. [After first deploy — verification](#6-after-first-deploy--verification)
+6. [After first deploy - verification](#6-after-first-deploy--verification)
 7. [Ongoing CD (GitHub → Vercel)](#7-ongoing-cd-github--vercel)
 8. [Custom domain (optional)](#8-custom-domain-optional)
 9. [Cost & plan recommendations](#9-cost--plan-recommendations)
@@ -29,7 +29,7 @@
 |------|--------|
 | GitHub repo pushed (`main` branch) | `nZO-Innovations/Entertain-Passport` |
 | Supabase project (Postgres + Auth + Storage) | See `docs/SUPABASE.md` |
-| Vercel account | [vercel.com](https://vercel.com) — **Pro** for commercial production |
+| Vercel account | [vercel.com](https://vercel.com) - **Pro** for commercial production |
 | Domain (optional) | e.g. `tickets.yourdomain.com` |
 | Local build passes | Run `npm run build` locally first |
 
@@ -55,7 +55,7 @@
 |-------------|--------|---------|
 | **Production** | `main` | Live users |
 | **Preview** | feature branches / PRs | QA before merge |
-| **Local** | — | `npm run dev` |
+| **Local** | - | `npm run dev` |
 
 **Region:** Prefer **Mumbai (`bom1`)** on Vercel to match Supabase (ap-south-1) and reduce latency.
 
@@ -63,7 +63,7 @@
 
 ## 3. Step-by-step: first deploy
 
-### Step 1 — Verify local build
+### Step 1 - Verify local build
 
 ```bash
 npm install
@@ -72,19 +72,19 @@ npm run build
 
 If this fails, fix errors before deploying.
 
-### Step 2 — Prepare Supabase
+### Step 2 - Prepare Supabase
 
 1. Open [Supabase Dashboard](https://supabase.com/dashboard) → your project.
 2. Confirm schema is applied (migrations or `npx prisma db push` from your machine using `DIRECT_URL`).
 3. Optional: run `scripts/backfill-creator-roles.sql` if legacy test users need role alignment.
 4. Upgrade to **Supabase Pro** for production (no project pause, better connections).
 
-### Step 3 — Create Vercel project
+### Step 3 - Create Vercel project
 
 1. Log in to [Vercel](https://vercel.com).
 2. **Add New → Project**.
 3. **Import** Git repository `Entertain-Passport` (GitHub OAuth if first time).
-4. Vercel auto-detects **Next.js** — leave defaults unless noted below:
+4. Vercel auto-detects **Next.js** - leave defaults unless noted below:
 
 | Setting | Value |
 |---------|--------|
@@ -94,19 +94,19 @@ If this fails, fix errors before deploying.
 | Output Directory | (default) |
 | Install Command | `npm install` (runs `postinstall` → `prisma generate`) |
 
-5. **Do not click Deploy yet** — add environment variables first (Step 4).
+5. **Do not click Deploy yet** - add environment variables first (Step 4).
 
-### Step 4 — Add environment variables
+### Step 4 - Add environment variables
 
 In Vercel → Project → **Settings → Environment Variables**, add every variable from [Section 4](#4-environment-variables-vercel).
 
 Apply to: **Production**, **Preview**, and **Development** (Preview can use same Supabase or a separate staging project).
 
-### Step 5 — Set region (optional but recommended)
+### Step 5 - Set region (optional but recommended)
 
 Project → **Settings → Functions** → Region → **Mumbai (bom1)** if available.
 
-### Step 6 — Deploy
+### Step 6 - Deploy
 
 Click **Deploy** (or push to `main` after import).
 
@@ -116,13 +116,13 @@ First build takes ~2–4 minutes. Watch the build log for:
 - `next build` success
 - No missing env var errors
 
-### Step 7 — Configure Supabase Auth for production URL
+### Step 7 - Configure Supabase Auth for production URL
 
 After deploy, Vercel gives you a URL like `https://nZO-Innovations.Entertain-Passport.vercel.app`.
 
 Update Supabase (see [Section 5](#5-supabase-production-settings)) **before** testing login.
 
-### Step 8 — Smoke test
+### Step 8 - Smoke test
 
 Use **Section 6** or the quick list in `docs/QA_MANUAL_TEST_GUIDE.md` (Section 5).
 
@@ -141,12 +141,25 @@ Copy from `.env.example`. Use **Production** values below.
 | `NEXT_PUBLIC_APP_NAME` | `Entertain Passport` | Public |
 | `NEXT_PUBLIC_APP_TAGLINE` | Your tagline | Public |
 | `NEXT_PUBLIC_SITE_URL` | **`https://your-production-domain.com`** | Must match live URL (no trailing slash) |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role key | **Server only** — gate staff creation |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role key | **Server only** - gate staff creation |
+| `VERIFY_DATABASE_URL` | Verify pooled URL, port **6543**, project `vzvxphcdcmahwwgadrlp` | Isolated verification DB (Mumbai) |
+| `VERIFY_DIRECT_URL` | Verify direct URL, port **5432** | Migrations only |
+| `VERIFY_KMS_PROVIDER` | `local` / `aws-kms` / `vault` | Card encryption |
+| `VERIFY_KMS_KEY_ID` | e.g. `ep-card-master` | |
+| `VERIFY_LOCAL_MASTER_KEY` | base64(32 bytes) | Dev/local KMS only |
+| `VERIFY_HASH_PEPPER` | server pepper | **Must match** across envs if reusing cards |
+| `VERIFY_HMAC_MAX_SKEW_SECONDS` | `120` | Partner API replay window |
 
 **Production `DATABASE_URL` example (replace password):**
 
 ```bash
 postgresql://postgres.PROJECT_REF:YOUR_PASSWORD@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+```
+
+**Production `VERIFY_DATABASE_URL` example (separate project `vzvxphcdcmahwwgadrlp`):**
+
+```bash
+postgresql://postgres.vzvxphcdcmahwwgadrlp:YOUR_PASSWORD@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require
 ```
 
 **Important:**
@@ -174,7 +187,7 @@ https://*.vercel.app/auth/callback
 https://*.vercel.app/auth/complete
 ```
 
-Preview deploys use `*.vercel.app` — include wildcard patterns so PR previews can log in.
+Preview deploys use `*.vercel.app` - include wildcard patterns so PR previews can log in.
 
 **Storage:** Bucket `event-images` must exist (see `docs/SUPABASE.md`).
 
@@ -182,7 +195,7 @@ Preview deploys use `*.vercel.app` — include wildcard patterns so PR previews 
 
 ---
 
-## 6. After first deploy — verification
+## 6. After first deploy - verification
 
 Run these in order on the **production URL**:
 
@@ -217,12 +230,12 @@ Once connected, **every push to `main` automatically**:
 | Push to feature branch / open PR | Preview deploy (unique URL) |
 | Change env var in Vercel | Requires **Redeploy** to take effect |
 
-**CD is included** — you pay for **build minutes** only if you exceed plan allowance (unlikely at normal pace). See cost notes in Section 9.
+**CD is included** - you pay for **build minutes** only if you exceed plan allowance (unlikely at normal pace). See cost notes in Section 9.
 
 **Best practices:**
 
 - Merge feature branches via PR; use Preview URL for QA
-- Avoid pushing broken builds to `main` — run `npm run build` locally first
+- Avoid pushing broken builds to `main` - run `npm run build` locally first
 - Set **Spend Management** in Vercel Billing (e.g. notify at $50)
 - Database migrations: run locally with `DIRECT_URL`, not during Vercel build:
 
@@ -252,8 +265,8 @@ Based on target scale (~100k registered users, ~10k requests/day):
 | **Supabase** | Pro | ~$25+ |
 | **Domain** | Registrar | ~$1/mo amortized |
 
-**Vercel Pro** — required for commercial use, higher build limits, spend controls.  
-**Hobby** — OK for personal demos only; not for Entertain Passport production.
+**Vercel Pro** - required for commercial use, higher build limits, spend controls.  
+**Hobby** - OK for personal demos only; not for Entertain Passport production.
 
 Idle production (~$20/mo Vercel) + normal CD (~10–30 deploys/month) stays within included build allowance.
 
@@ -291,7 +304,7 @@ Scaling path (no microservices needed yet): `docs/PERFORMANCE.md`.
 ### Vercel project
 
 - [ ] GitHub repo imported
-- [ ] All env vars set (Section 4)
+- [ ] All env vars set (Section 4), including `VERIFY_*` for project `vzvxphcdcmahwwgadrlp`
 - [ ] Region = Mumbai if available
 - [ ] First deploy succeeded
 

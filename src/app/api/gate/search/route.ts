@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { canScanEventTickets } from "@/lib/permissions";
 import { TicketStatus } from "@/lib/types";
+import { normalizeIdentityLookup } from "@/lib/identity";
+import { profileIdentityDisplay } from "@/lib/profile";
 
 const PAGE_SIZE = 15;
 
@@ -28,6 +30,8 @@ export async function GET(req: Request) {
       : status === "all"
       ? { status: { in: [TicketStatus.VALID, TicketStatus.CHECKED_IN] } }
       : { status: TicketStatus.CHECKED_IN };
+  const insensitive = "insensitive" as const;
+  const normalizedQ = normalizeIdentityLookup(q);
 
   const where = {
     orderItem: { eventId },
@@ -35,13 +39,13 @@ export async function GET(req: Request) {
     ...(q
       ? {
           OR: [
-            { ticketCode: { contains: q, mode: "insensitive" as const } },
-            { barcode: { contains: q, mode: "insensitive" as const } },
-            { holderName: { contains: q, mode: "insensitive" as const } },
-            { holderNic: { contains: q, mode: "insensitive" as const } },
-            { rfidCard: { passportNo: { contains: q, mode: "insensitive" as const } } },
-            { orderItem: { order: { user: { name: { contains: q, mode: "insensitive" as const } } } } },
-            { orderItem: { order: { user: { email: { contains: q, mode: "insensitive" as const } } } } },
+            { holderNic: { contains: normalizedQ, mode: insensitive } },
+            { holder: { is: { nic: { contains: normalizedQ, mode: insensitive } } } },
+            { holder: { is: { idNumber: { contains: normalizedQ, mode: insensitive } } } },
+            { rfidCard: { passportNo: { contains: q, mode: insensitive } } },
+            { rfidCard: { uid: { contains: q, mode: insensitive } } },
+            { orderItem: { order: { user: { nic: { contains: normalizedQ, mode: insensitive } } } } },
+            { orderItem: { order: { user: { idNumber: { contains: normalizedQ, mode: insensitive } } } } },
           ],
         }
       : {}),
@@ -53,13 +57,13 @@ export async function GET(req: Request) {
       where,
       include: {
         rfidCard: { select: { passportNo: true } },
-        holder: { select: { id: true, name: true, email: true } },
+        holder: { select: { id: true, name: true, email: true, nic: true, idType: true, idNumber: true } },
         orderItem: {
           include: {
             package: { select: { name: true } },
             order: {
               include: {
-                user: { select: { id: true, name: true, email: true } },
+                user: { select: { id: true, name: true, email: true, nic: true, idType: true, idNumber: true } },
                 items: {
                   where: { eventId },
                   select: { id: true, qty: true },
@@ -87,13 +91,20 @@ export async function GET(req: Request) {
       }
       const totalInOrder = orderQtyCache.get(orderId) ?? 1;
 
+      const identity =
+        t.rfidCard?.passportNo ??
+        (t.holderNic ? `ID ${t.holderNic}` : null) ??
+        profileIdentityDisplay(t.holder) ??
+        profileIdentityDisplay(buyer) ??
+        "Entertain Passport";
+
       return {
         id: t.id,
         holder: t.holderName ?? buyer.name ?? "Guest",
         buyerName: buyer.name ?? buyer.email,
         buyerEmail: buyer.email,
         packageName: t.orderItem.package.name,
-        code: t.ticketCode ?? t.barcode,
+        identity,
         passportNo: t.rfidCard?.passportNo ?? null,
         status: t.status,
         checkedInAt: t.checkedInAt,

@@ -5,7 +5,7 @@ export const CatalogModule = {
 
 export type CatalogModuleName = (typeof CatalogModule)[keyof typeof CatalogModule];
 
-/** Canonical main-category slugs — used to filter DB rows and UI lists. */
+/** Canonical main-category slugs - used to filter DB rows and UI lists. */
 export const SHOWS_MAIN_SLUGS = [
   "concerts",
   "stage-drama",

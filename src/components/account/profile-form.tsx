@@ -1,22 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { Gift, Loader2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
-import { GENDER_OPTIONS, ID_TYPE_OPTIONS } from "@/lib/profile";
+import { GENDER_OPTIONS, ID_TYPE_OPTIONS, profileIsComplete, type IdentityType } from "@/lib/profile";
 import { SRI_LANKA_PROVINCE_NAMES, getDistricts, ENABLED_COUNTRIES } from "@/lib/locations";
 
 export type ProfileFormData = {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
+  idType: IdentityType;
+  idNumber: string;
   phone: string;
   gender: string;
-  birthday: string; // yyyy-mm-dd
-  idType: string;
-  idNumber: string;
+  birthday: string;
   address: {
     line1: string;
     line2: string;
@@ -67,6 +68,8 @@ export function ProfileForm({
   showSkip?: boolean;
 }) {
   const router = useRouter();
+  const params = useSearchParams();
+  const returnTo = params.get("next");
   const { toast } = useToast();
   const [form, setForm] = React.useState<ProfileFormData>(initial);
   const [saving, setSaving] = React.useState(false);
@@ -77,6 +80,8 @@ export function ProfileForm({
     setForm((f) => ({ ...f, address: { ...f.address, [k]: v } }));
 
   const districts = getDistricts(form.address.province);
+  const identityLabel = form.idType === "PASSPORT" ? "Passport number" : "NIC";
+  const identityPlaceholder = form.idType === "PASSPORT" ? "N1234567" : "200012345678";
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,10 +94,28 @@ export function ProfileForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast({ title: "Couldn't save", description: data?.error ?? "Please try again." });
+        toast({
+          title: "Couldn't save",
+          description: data?.error ?? "Please try again.",
+          variant: "destructive",
+        });
         return;
       }
       toast({ title: "Profile saved", description: "Your details have been updated." });
+      const complete = profileIsComplete({
+        firstName: form.firstName,
+        lastName: form.lastName,
+        name: `${form.firstName} ${form.lastName}`.trim(),
+        phone: form.phone,
+        gender: form.gender,
+        idType: form.idType,
+        idNumber: form.idNumber,
+        addresses: [form.address],
+      });
+      if (returnTo?.startsWith("/") && complete) {
+        router.push(returnTo);
+        return;
+      }
       router.refresh();
     } finally {
       setSaving(false);
@@ -105,15 +128,56 @@ export function ProfileForm({
         <h2 className="font-display text-lg font-semibold">Personal info</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <Label>Full name</Label>
-            <Input value={form.name} onChange={(e) => set("name", e.target.value)} required />
+            <Label>First name</Label>
+            <Input value={form.firstName} onChange={(e) => set("firstName", e.target.value)} required />
+          </div>
+          <div>
+            <Label>Last name</Label>
+            <Input value={form.lastName} onChange={(e) => set("lastName", e.target.value)} required />
           </div>
           <div>
             <Label>Email</Label>
             <Input value={form.email} disabled />
           </div>
+          <div className="sm:col-span-2">
+            <Label>Primary identity</Label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ID_TYPE_OPTIONS.map((option) => (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${
+                    form.idType === option.value ? "border-primary bg-primary/5" : "bg-background"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="profile-id-type"
+                    value={option.value}
+                    checked={form.idType === option.value}
+                    onChange={() => set("idType", option.value)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+            {form.idType === "PASSPORT" && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Foreign guests can use their passport number to access events in Sri Lanka.
+              </p>
+            )}
+          </div>
           <div>
-            <Label>Phone number</Label>
+            <Label>{identityLabel}</Label>
+            <Input
+              value={form.idNumber}
+              onChange={(e) => set("idNumber", e.target.value.toUpperCase())}
+              placeholder={identityPlaceholder}
+              required
+            />
+          </div>
+          <div>
+            <Label>Mobile number</Label>
             <Input
               value={form.phone}
               onChange={(e) => set("phone", e.target.value)}
@@ -123,7 +187,7 @@ export function ProfileForm({
           <div>
             <Label>Gender</Label>
             <Select value={form.gender} onChange={(v) => set("gender", v)}>
-              <option value="">Select…</option>
+              <option value="">Select...</option>
               {GENDER_OPTIONS.map((g) => (
                 <option key={g.value} value={g.value}>
                   {g.label}
@@ -134,37 +198,6 @@ export function ProfileForm({
           <div>
             <Label>Birthday</Label>
             <Input type="date" value={form.birthday} onChange={(e) => set("birthday", e.target.value)} />
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border bg-card p-5">
-        <div className="flex items-center gap-2">
-          <Gift className="h-4 w-4 text-primary" />
-          <h2 className="font-display text-lg font-semibold">Loyalty &amp; identity</h2>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Add your NIC or Passport to join the loyalty program and unlock member rewards.
-        </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label>ID type</Label>
-            <Select value={form.idType} onChange={(v) => set("idType", v)}>
-              <option value="">Select…</option>
-              {ID_TYPE_OPTIONS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <Label>NIC / Passport number</Label>
-            <Input
-              value={form.idNumber}
-              onChange={(e) => set("idNumber", e.target.value)}
-              placeholder="e.g. 200012345678"
-            />
           </div>
         </div>
       </section>
@@ -199,7 +232,7 @@ export function ProfileForm({
                 setAddr("district", "");
               }}
             >
-              <option value="">Select…</option>
+              <option value="">Select...</option>
               {SRI_LANKA_PROVINCE_NAMES.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -214,7 +247,7 @@ export function ProfileForm({
               onChange={(v) => setAddr("district", v)}
               disabled={!form.address.province}
             >
-              <option value="">{form.address.province ? "Select…" : "Pick a province first"}</option>
+              <option value="">{form.address.province ? "Select..." : "Pick a province first"}</option>
               {districts.map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -236,7 +269,7 @@ export function ProfileForm({
       <div className="flex items-center gap-3">
         <Button type="submit" variant="brand" size="lg" disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {saving ? "Saving…" : "Save profile"}
+          {saving ? "Saving..." : "Save profile"}
         </Button>
         {showSkip && (
           <Button type="button" variant="ghost" onClick={() => router.push("/account/tickets")}>

@@ -32,7 +32,7 @@ export function assertVerifyIsolation(): void {
   if (!verify) throw new Error("VERIFY_DATABASE_URL is not set.");
   if (process.env.NODE_ENV === "production" && core && core === verify) {
     throw new Error(
-      "Verification plane shares the core DATABASE_URL — isolation broken. Point VERIFY_DATABASE_URL at a dedicated database."
+      "Verification plane shares the core DATABASE_URL - isolation broken. Point VERIFY_DATABASE_URL at a dedicated database."
     );
   }
 }

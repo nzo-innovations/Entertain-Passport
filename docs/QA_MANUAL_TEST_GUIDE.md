@@ -1,4 +1,4 @@
-# Entertain Passport — Manual QA Test Guide
+# Entertain Passport - Manual QA Test Guide
 
 **Product:** Entertain Passport (ticketing platform by nZO Innovations)  
 **Audience:** QA engineers, testers, and stakeholders who are **new to this system**  
@@ -34,15 +34,15 @@ Entertain Passport is an event ticketing platform with four main user types:
 |-----------|-------------------|---------------------------|
 | **Customer** | Ticket buyer | Browse shows, pay, keep tickets in a digital wallet |
 | **Creator** | Event organizer, artist manager, artist, or venue owner | Create events, manage team, publish venues (venue owners) |
-| **Gate staff** | Door scanner at an event | Check in attendees with QR/barcode or RFID passport |
-| **Super Admin** | Platform owner (nZO) | Approve events, manage orgs, gate staff, RFID cards, settings |
+| **Gate staff** | Door scanner at an event | Check in attendees with NIC, passport number or Entertain Passport NFC |
+| **Super Admin** | Platform owner (nZO) | Approve events, manage orgs, gate staff, NFC cards, settings |
 
 **Core business flow:**
 
 ```
 Creator submits event → Super Admin approves → Event appears on public site
-→ Customer buys ticket → Ticket issued with QR code
-→ Gate staff scans ticket at door → Ticket marked CHECKED_IN
+→ Customer buys ticket → Ticket appears in wallet with NIC/passport entry identity
+→ Gate staff verifies NIC/passport number or taps Passport card → Ticket marked CHECKED_IN
 ```
 
 **Secondary flow (Places to Go):**
@@ -65,7 +65,7 @@ Venue owner publishes pub/club profile → Public can browse /venues
 | **Organization (org)** | A company/brand under which events are published (e.g. "BeatPulse Events") |
 | **Creator role lane** | Distinct `User.role`: `ORGANIZER`, `ARTIST_MANAGER`, `ARTIST`, `BUSINESS_OWNER` |
 | **Gate staff** | `User.role = GATE_STAFF`; can only check in tickets for assigned events |
-| **Entertain Passport** | NFC/RFID card that can be linked to a ticket for tap check-in |
+| **Entertain Passport** | NFC card that can be linked to a ticket for tap check-in |
 | **Places to Go** | Public directory of pubs, cafés, clubs (`/venues`) |
 | **Mock payment** | Checkout currently marks orders PAID immediately (WebXPay integration pending) |
 
@@ -92,7 +92,7 @@ Open **http://localhost:3000**
 
 | Command | When to use |
 |---------|-------------|
-| `npm run dev` | Daily QA — clears stale cache automatically |
+| `npm run dev` | Daily QA - clears stale cache automatically |
 | `npm run build && npm start` | Production-like local test |
 | `npm run start:fresh` | Rebuild + start (after pulling new code) |
 
@@ -118,12 +118,12 @@ Seeded data lives in Supabase. To align legacy creator roles with org types, run
 
 | Email | Role | Org type (if creator) | Login URL | After login lands on |
 |-------|------|------------------------|-----------|----------------------|
-| `demo@customer.test` | Customer | — | `/login` | `/account/tickets` |
+| `demo@customer.test` | Customer | - | `/login` | `/account/tickets` |
 | `promoter@beatpulse.test` | Event Organizer | ORGANIZER | `/organizer/login` | `/portal` |
 | `artist@mayaray.test` | Artist Manager | ARTIST_MANAGER | `/organizer/login` | `/portal` |
 | `venue@lumina.test` | Business Owner | BUSINESS_OWNER | `/organizer/login` | `/portal` (+ My Venue nav) |
 | `scanner@door.test` | See note below | WORKER member | `/organizer/login` | `/gate` or `/portal` |
-| `superadmin@nzo.test` | Super Admin | — | `/third-eye/999/login` | `/admin` |
+| `superadmin@nzo.test` | Super Admin | - | `/third-eye/999/login` | `/admin` |
 
 **Note on `scanner@door.test`:** Seed data may show an older role. For gate testing, prefer creating a fresh gate-staff account via **Portal → Team** or **Admin → Gate staff**.
 
@@ -131,7 +131,7 @@ Seeded data lives in Supabase. To align legacy creator roles with org types, run
 
 | Role | Where to sign up | What to pick |
 |------|------------------|--------------|
-| Customer | `/login` → Create account | — |
+| Customer | `/login` → Create account | - |
 | Event Organizer | `/organizer/login` → Create account | "Event Organizer" |
 | Artist Manager | `/organizer/login` → Create account | "Artist Manager" |
 | Artist | `/organizer/login` → Create account | "Artist (self-managed)" |
@@ -216,7 +216,7 @@ Run this first to confirm the build is usable.
 | All events | `/admin/events` |
 | Organizations | `/admin/organizations` |
 | **Gate staff** | `/admin/gate-staff` |
-| Passports (RFID) | `/admin/rfid` |
+| Passports (NFC) | `/admin/nfc` |
 | Categories | `/admin/categories` |
 | Venues | `/admin/venues` |
 | Alerts | `/admin/alerts` |
@@ -236,7 +236,7 @@ Assign suites to testers or run in order A → F.
 | **C** | Event Organizer | Events, wizard, submit, team |
 | **D** | Business Owner | My Venue + events |
 | **E** | Gate staff | Check-in, search, permissions |
-| **F** | Super Admin | Approvals, orgs, gate staff, RFID, settings |
+| **F** | Super Admin | Approvals, orgs, gate staff, NFC, settings |
 
 ---
 
@@ -263,23 +263,23 @@ Assign suites to testers or run in order A → F.
 
 ---
 
-### 8.2 Customer — auth & account (Suite B)
+### 8.2 Customer - auth & account (Suite B)
 
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
 | CUS-01 | Customer login | `/login` → `demo@customer.test` | Redirect to `/account/tickets` |
-| CUS-02 | Customer signup | Create new account at `/login` | Account created; lands on profile or tickets |
-| CUS-03 | Wrong door — organizer at customer login | Sign in as `promoter@beatpulse.test` at `/login` | Error: use organizer login |
-| CUS-04 | Wrong door — admin at customer login | Sign in as `superadmin@nzo.test` at `/login` | Error: use admin login |
-| CUS-05 | My tickets | `/account/tickets` | Purchased tickets with QR/barcode |
-| CUS-06 | Profile — save | `/account/profile` → fill name, address | Saves without error |
-| CUS-07 | Profile — loyalty fields | Add NIC/passport, birthday, gender | Profile completeness indicator updates |
+| CUS-02 | Customer signup | Create new account at `/login`; choose NIC or Passport radio and enter unique ID | Account created; lands on profile with identity saved |
+| CUS-03 | Wrong door - organizer at customer login | Sign in as `promoter@beatpulse.test` at `/login` | Error: use organizer login |
+| CUS-04 | Wrong door - admin at customer login | Sign in as `superadmin@nzo.test` at `/login` | Error: use admin login |
+| CUS-05 | My tickets | `/account/tickets` | Purchased tickets with NIC/passport entry identity |
+| CUS-06 | Profile - save | `/account/profile` → fill mobile, gender, address | Saves without error |
+| CUS-07 | Profile - loyalty fields | Add mobile, gender, address | Profile completeness indicator updates |
 | CUS-08 | Sign out | Click logout | Session cleared; protected routes redirect to login |
 | CUS-09 | Session persistence | Login → close tab → reopen same browser | Still signed in (within 7 days) |
 
 ---
 
-### 8.3 Customer — purchase flow (Suite B)
+### 8.3 Customer - purchase flow (Suite B)
 
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
@@ -290,12 +290,12 @@ Assign suites to testers or run in order A → F.
 | BUY-05 | Ticket in wallet | After purchase → My Tickets | New ticket visible with VALID status |
 | BUY-06 | Sold out handling | Buy until package qty exhausted | Clear error; no oversell |
 | BUY-07 | KOKO payment | Select KOKO at checkout | Shown as unavailable / coming soon |
-| BUY-08 | Assign ticket | Assign ticket to friend (NIC or passport no.) | Assignment saved |
+| BUY-08 | Assign ticket | Assign ticket to friend (Entertain Passport no., NIC or passport no.) | Assignment saved |
 | BUY-09 | Loyalty points | Complete purchase with complete profile | Points increase (1 pt per LKR 100) |
 
 ---
 
-### 8.4 Creator — login & portal (Suite C/D)
+### 8.4 Creator - login & portal (Suite C/D)
 
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
@@ -303,21 +303,21 @@ Assign suites to testers or run in order A → F.
 | CRE-02 | Artist Manager login | `artist@mayaray.test` | Portal; role label "Artist Manager" |
 | CRE-03 | Business Owner login | `venue@lumina.test` | Portal; **My Venue** in sidebar |
 | CRE-04 | Artist signup lane | Sign up as Artist | `User.role = ARTIST`; portal access |
-| CRE-05 | Wrong door — customer at organizer login | `demo@customer.test` at `/organizer/login` | Rejected; directed to customer login |
+| CRE-05 | Wrong door - customer at organizer login | `demo@customer.test` at `/organizer/login` | Rejected; directed to customer login |
 | CRE-06 | Portal dashboard | `/portal` | Stats/cards load without error |
 | CRE-07 | My events list | `/portal/events` | Org's events listed with status badges |
 | CRE-08 | Gate staff blocked from portal | Login as pure GATE_STAFF | Redirect to `/gate`, not portal |
 
 ---
 
-### 8.5 Creator — event wizard & lifecycle (Suite C)
+### 8.5 Creator - event wizard & lifecycle (Suite C)
 
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
 | EVT-01 | Create event wizard | `/portal/events/new` → complete all steps | Event created as DRAFT / PENDING_REVIEW |
-| EVT-02 | Image upload — valid | Upload JPEG ≥800×600 in wizard | Image accepted, preview shown |
-| EVT-03 | Image upload — too small | Upload tiny image | Clear validation error |
-| EVT-04 | Image upload — wrong type | Upload PDF | Rejected with message |
+| EVT-02 | Image upload - valid | Upload JPEG ≥800×600 in wizard | Image accepted, preview shown |
+| EVT-03 | Image upload - too small | Upload tiny image | Clear validation error |
+| EVT-04 | Image upload - wrong type | Upload PDF | Rejected with message |
 | EVT-05 | Ticket packages | Add 2+ packages with prices | Saved on event |
 | EVT-06 | Submit for review | Submit from event detail | Status → PENDING_REVIEW |
 | EVT-07 | Edit after changes requested | Admin requests changes → organizer edits | Can resubmit |
@@ -325,12 +325,12 @@ Assign suites to testers or run in order A → F.
 | EVT-09 | After approval | Admin approves → check public site | Event visible |
 | EVT-10 | Assign artist tag | Add performing artist org on event | Artist org linked |
 | EVT-11 | Event staff on event | Add scanner from team on event page | Staff appears on event |
-| EVT-12 | Portal scanner | `/portal/events/[id]/scan` | Manual/QR check-in works for permitted user |
+| EVT-12 | Portal scanner | `/portal/events/[id]/scan` | NIC/passport check-in works for permitted user |
 | EVT-13 | Commission read-only | View commission in wizard | Shows platform %; organizer cannot edit |
 
 ---
 
-### 8.6 Creator — team & gate staff (Suite C)
+### 8.6 Creator - team & gate staff (Suite C)
 
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
@@ -346,7 +346,7 @@ Assign suites to testers or run in order A → F.
 
 ---
 
-### 8.7 Business Owner — Places to Go (Suite D)
+### 8.7 Business Owner - Places to Go (Suite D)
 
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
@@ -367,10 +367,10 @@ Assign suites to testers or run in order A → F.
 |----|-----------|-------|-----------------|
 | GATE-01 | Gate home | Login as gate staff → `/gate` | Assigned events only |
 | GATE-02 | Open check-in | Click event → `/gate/[eventId]` | Console loads |
-| GATE-03 | Scan valid ticket | Enter barcode/scan QR of VALID ticket | CHECKED_IN; success feedback |
-| GATE-04 | Scan again (duplicate) | Scan same ticket twice | Already checked-in message |
-| GATE-05 | Invalid code | Enter random code | Not found error |
-| GATE-06 | Search attendees | Search by name/email | Results paginate |
+| GATE-03 | Verify valid ticket | Enter NIC/passport number or tap Passport card for a VALID ticket | CHECKED_IN; success feedback |
+| GATE-04 | Verify again (duplicate) | Use the same identity/card twice | Already checked-in message |
+| GATE-05 | Invalid identity | Enter random NIC/passport/card value | Not found error |
+| GATE-06 | Search attendees | Search by NIC or passport number | Results paginate |
 | GATE-07 | Filter checked-in | Toggle filters | List updates |
 | GATE-08 | Rollback denied | As SCANNER role, try rollback | Denied (Event Manager only) |
 | GATE-09 | New window session | Open `/gate` in new browser window while logged in | Must sign in again (gate session rule) |
@@ -391,14 +391,14 @@ Assign suites to testers or run in order A → F.
 | ADM-07 | Create event as admin | `/admin/events/new` | Auto-published (no approval wait) |
 | ADM-08 | Organizations list | `/admin/organizations` | All orgs with owner info |
 | ADM-09 | Org commission override | Org detail → set commission % | Saved; shown on org |
-| ADM-10 | Gate staff — list | `/admin/gate-staff` | All gate staff, orgs, events visible |
-| ADM-11 | Gate staff — create | Pick org, add staff | Staff created under that org |
-| ADM-12 | Gate staff — edit name | Edit name on staff row | Updated |
-| ADM-13 | Gate staff — reset password | Reset password | Success |
-| ADM-14 | Gate staff — assign event | Assign staff to any event | Assignment visible |
-| ADM-15 | Gate staff — delete | Delete staff | Removed platform-wide |
-| ADM-16 | RFID program card | `/admin/rfid` → add UID | Card created UNASSIGNED |
-| ADM-17 | RFID assign to user | Assign card to customer email | Status ACTIVE |
+| ADM-10 | Gate staff - list | `/admin/gate-staff` | All gate staff, orgs, events visible |
+| ADM-11 | Gate staff - create | Pick org, add staff | Staff created under that org |
+| ADM-12 | Gate staff - edit name | Edit name on staff row | Updated |
+| ADM-13 | Gate staff - reset password | Reset password | Success |
+| ADM-14 | Gate staff - assign event | Assign staff to any event | Assignment visible |
+| ADM-15 | Gate staff - delete | Delete staff | Removed platform-wide |
+| ADM-16 | NFC program card | `/admin/nfc` → add UID | Card created UNASSIGNED |
+| ADM-17 | NFC assign to user | Assign card to customer email | Status ACTIVE |
 | ADM-18 | Categories CRUD | Add/edit/delete category | Reflects on `/genres` and filters |
 | ADM-19 | Venues CRUD | Admin venues add/edit | Saved in catalog |
 | ADM-20 | Platform settings | Change default commission | New events use updated default |
@@ -412,7 +412,7 @@ Assign suites to testers or run in order A → F.
 | ID | Test case | Steps | Expected result |
 |----|-----------|-------|-----------------|
 | X-01 | Hard refresh after deploy | Pull new code → `npm run dev` → hard refresh | Styled UI, no ChunkLoadError |
-| X-02 | Admin nav — all links | Click every admin sidebar item | Each page loads |
+| X-02 | Admin nav - all links | Click every admin sidebar item | Each page loads |
 | X-03 | Portal mobile nav | Mobile width in portal | Sheet menu works |
 | X-04 | Logout from each role | Logout from customer, portal, admin, gate | Correct login page |
 | X-05 | Protected route | Visit `/portal` unsigned | Redirect to organizer login |
@@ -431,9 +431,9 @@ These are **story-based** tests that cut across roles. Run after module tests pa
 | 1 | Event Organizer | Create event via wizard, upload image, add packages, submit |
 | 2 | Super Admin | Approve event in Approvals |
 | 3 | Customer | Find event on `/events`, add to cart, checkout |
-| 4 | Customer | Confirm ticket in `/account/tickets` with QR |
+| 4 | Customer | Confirm ticket in `/account/tickets` with NIC/passport entry identity |
 | 5 | Organizer | Add gate staff in Team, assign to event |
-| 6 | Gate staff | Login → `/gate` → open event → scan ticket |
+| 6 | Gate staff | Login → `/gate` → open event → verify NIC/passport number or tap Passport card |
 | 7 | Customer | Refresh My Tickets | Status = CHECKED_IN |
 | 8 | Super Admin | Check audit log | Create/approve/check-in actions logged |
 
@@ -504,12 +504,12 @@ Document these as **expected behaviour**, not bugs (unless regression):
 
 | Item | Status |
 |------|--------|
-| **WebXPay live payment** | Mocked — orders go PAID immediately |
-| **KOKO pay-later** | UI only — "coming soon" |
+| **WebXPay live payment** | Mocked - orders go PAID immediately |
+| **KOKO pay-later** | UI only - "coming soon" |
 | **Email confirmation** | May be disabled in dev; signup can auto-login |
 | **RLS direct Supabase access** | App uses Prisma; anon key cannot read tables directly (by design) |
 | **Gate staff multi-window** | Second window requires new login (by design) |
-| **Production scale test** | Load/stress testing not covered here — see `docs/PERFORMANCE.md` |
+| **Production scale test** | Load/stress testing not covered here - see `docs/PERFORMANCE.md` |
 
 ---
 
@@ -551,11 +551,11 @@ Severity:      Blocker / Major / Minor / Cosmetic
 
 Before signing off a release, confirm:
 
-- [ ] Smoke test (Section 5) — all pass
-- [ ] E2E-1 Publish and sell — pass
-- [ ] E2E-2 Venue publish — pass
-- [ ] E2E-3 Admin gate staff — pass
-- [ ] E2E-4 Role isolation — pass
+- [ ] Smoke test (Section 5) - all pass
+- [ ] E2E-1 Publish and sell - pass
+- [ ] E2E-2 Venue publish - pass
+- [ ] E2E-3 Admin gate staff - pass
+- [ ] E2E-4 Role isolation - pass
 - [ ] All four creator signup lanes create correct role
 - [ ] Image upload works (event + venue)
 - [ ] `npm run build` succeeds with zero errors

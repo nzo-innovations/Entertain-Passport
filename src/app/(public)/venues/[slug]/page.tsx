@@ -1,21 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, MapPin, Phone, Ticket } from "lucide-react";
+import { ExternalLink, MapPin, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EventCard } from "@/components/events/event-card";
 import { VenueProgramSchedule } from "@/components/venues/venue-program-schedule";
+import { VenuePostItem } from "@/components/venues/venue-post-item";
 import { PLACES_LABEL } from "@/lib/config";
 import { getVenueDetailBySlug, FALLBACK_COVER } from "@/lib/venues";
-import { formatCurrency } from "@/lib/utils";
 import { VENUE_KIND_LABELS, type VenueKind } from "@/lib/types";
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const venue = await getVenueDetailBySlug(params.slug);
   if (!venue) return { title: "Venue not found" };
   return {
-    title: `${venue.name} — ${PLACES_LABEL}`,
+    title: `${venue.name} - ${PLACES_LABEL}`,
     description: venue.description ?? `What's on at ${venue.name} in ${venue.city}.`,
   };
 }
@@ -26,20 +25,6 @@ export default async function VenueDetailPage({ params }: { params: { slug: stri
 
   const kindLabel = venue.kind ? VENUE_KIND_LABELS[venue.kind as VenueKind] ?? venue.kind : "Venue";
   const cover = venue.coverImageUrl ?? FALLBACK_COVER;
-
-  const ticketedEvents = venue.events.map((e) => ({
-    slug: e.slug,
-    title: e.title,
-    shortDescription: e.shortDescription,
-    primaryImage: e.primaryImage?.url ?? e.images[0]?.url ?? cover,
-    category: e.category.name,
-    startsAt: e.startsAt,
-    venue: venue.name,
-    city: venue.city,
-    fromPrice: e.packages[0]?.price ?? 0,
-    totalSeats: 0,
-    soldSeats: 0,
-  }));
 
   return (
     <div className="pb-24">
@@ -90,35 +75,36 @@ export default async function VenueDetailPage({ params }: { params: { slug: stri
           </div>
         </header>
 
-        <section>
-          <VenueProgramSchedule programs={venue.programs} />
-        </section>
-
-        {ticketedEvents.length > 0 && (
-          <section>
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="font-display text-2xl font-semibold">Ticketed shows here</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Special nights with tickets — also listed on{" "}
-                  <Link href="/events" className="text-primary underline-offset-4 hover:underline">
-                    Shows
-                  </Link>
-                  .
-                </p>
-              </div>
-              <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                <Ticket className="h-4 w-4" />
-                From {formatCurrency(ticketedEvents[0]?.fromPrice ?? 0)}
-              </span>
-            </div>
-            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {ticketedEvents.map((e) => (
-                <EventCard key={e.slug} event={e} />
+        {venue.posts.length > 0 && (
+          <section id="updates">
+            <h2 className="font-display text-2xl font-semibold">News &amp; updates</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Latest from {venue.name}. Tap a post to read more - external links appear when provided.
+            </p>
+            <div className="mt-6 space-y-3">
+              {venue.posts.map((post) => (
+                <VenuePostItem
+                  key={post.id}
+                  post={{
+                    id: post.id,
+                    title: post.title,
+                    body: post.body,
+                    imageUrl: post.imageUrl,
+                    detailLink: post.detailLink,
+                    publishedAt: post.publishedAt,
+                    venueName: venue.name,
+                    venueSlug: venue.slug!,
+                    city: venue.city,
+                  }}
+                />
               ))}
             </div>
           </section>
         )}
+
+        <section>
+          <VenueProgramSchedule programs={venue.programs} />
+        </section>
       </div>
     </div>
   );

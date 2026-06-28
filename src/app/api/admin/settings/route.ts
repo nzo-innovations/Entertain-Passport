@@ -8,6 +8,7 @@ const schema = z.object({
   defaultCommissionPct: z.number().min(0).max(100),
   freeStaffPerEvent: z.number().int().min(0).max(100),
   extraStaffMonthlyFee: z.number().int().min(0).max(10_000_000), // minor units (cents)
+  passportCardPrice: z.number().int().min(0).max(10_000_000), // minor units (cents)
 });
 
 export async function PATCH(req: Request) {

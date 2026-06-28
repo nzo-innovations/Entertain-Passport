@@ -5,6 +5,7 @@ import { canScanEventTickets } from "@/lib/permissions";
 import { findTicketByCode, getEventCheckinStats } from "@/lib/gate";
 import { getGatePhysicalSuggestionsForTicket } from "@/lib/physical-tickets";
 import { TicketStatus } from "@/lib/types";
+import { profileIdentityDisplay } from "@/lib/profile";
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -30,11 +31,19 @@ export async function POST(req: Request) {
   }
 
   const holder = ticket.holderName ?? ticket.orderItem.order.user.name ?? ticket.orderItem.order.user.email;
+  const identity =
+    ticket.rfidCard?.passportNo ??
+    (ticket.holderNic ? `ID ${ticket.holderNic}` : null) ??
+    profileIdentityDisplay(ticket.holder) ??
+    (ticket.holderUserId === ticket.orderItem.order.user.id
+      ? profileIdentityDisplay(ticket.orderItem.order.user)
+      : null) ??
+    "Entertain Passport";
   const summary = {
     id: ticket.id,
     holder,
     packageName: ticket.orderItem.package.name,
-    code: ticket.ticketCode ?? ticket.barcode,
+    identity,
     passportNo: ticket.rfidCard?.passportNo ?? null,
     checkedInAt: ticket.checkedInAt,
     isBulk: false as boolean,

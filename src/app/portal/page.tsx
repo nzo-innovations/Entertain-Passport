@@ -32,10 +32,10 @@ export default async function PortalDashboard() {
     0
   );
 
-  const scannableEvents = [];
+  const gateEvents = [];
   for (const e of events.filter((ev) => ev.approvalStatus === ApprovalStatus.APPROVED)) {
     if (await canScanEventTickets(session.id, e.id, session.role)) {
-      scannableEvents.push(e);
+      gateEvents.push(e);
     }
   }
 
@@ -44,7 +44,7 @@ export default async function PortalDashboard() {
       <section>
         <h2 className="font-display text-2xl font-bold">Welcome back, {session.name?.split(" ")[0]}</h2>
         <p className="text-sm text-muted-foreground">
-          Manage your shows, track approval status, assign door staff, and scan tickets on event day.
+          Manage your shows, track approval status, assign door staff, and verify entry on event day.
         </p>
       </section>
 
@@ -74,19 +74,19 @@ export default async function PortalDashboard() {
         </section>
       )}
 
-      {scannableEvents.length > 0 && (
+      {gateEvents.length > 0 && (
         <section className="rounded-2xl border bg-card p-5">
           <h3 className="flex items-center gap-2 font-display text-lg font-semibold">
             <ScanLine className="h-5 w-5 text-primary" />
             Event-day scanner
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Scan barcodes at the entrance for your upcoming shows.
+            Verify attendees by NIC, passport number or Entertain Passport card at the entrance.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {scannableEvents.slice(0, 3).map((e) => (
+            {gateEvents.slice(0, 3).map((e) => (
               <Button key={e.id} variant="brand" size="sm" asChild>
-                <Link href={`/portal/events/${e.id}/scan`}>Scan - {e.title}</Link>
+                <Link href={`/portal/events/${e.id}/scan`}>Open gate - {e.title}</Link>
               </Button>
             ))}
           </div>

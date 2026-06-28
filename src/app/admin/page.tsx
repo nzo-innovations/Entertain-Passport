@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/admin/stat-card";
 import { SalesChart } from "@/components/admin/sales-chart";
+import { NfcAnalyticsSection } from "@/components/admin/nfc-analytics-section";
 import { db } from "@/lib/db";
 import { formatCurrency, formatCompact } from "@/lib/utils";
 import { formatEventDate } from "@/lib/format";
@@ -97,6 +98,8 @@ export default async function AdminOverviewPage() {
         />
         <StatCard label="Active customers" value={formatCompact(totalUsers)} delta={5.2} hint="this month" icon={Users} />
       </section>
+
+      <NfcAnalyticsSection />
 
       <section className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <div className="rounded-2xl border bg-card p-5">

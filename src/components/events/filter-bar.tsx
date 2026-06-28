@@ -139,7 +139,7 @@ export function FilterBar({
         </div>
       </div>
 
-      {/* Row 1 — main categories only */}
+      {/* Row 1 - main categories only */}
       <div className="scroll-fade-x -mx-1 overflow-x-auto px-1 pb-0.5">
         <div className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
           <CategoryPill
@@ -171,7 +171,7 @@ export function FilterBar({
         </div>
       </div>
 
-      {/* Row 2 — subcategories for selected main */}
+      {/* Row 2 - subcategories for selected main */}
       {selectedMain && selectedMain.subs.length > 0 && (
         <div className="scroll-fade-x -mx-1 overflow-x-auto px-1 pb-0.5">
           <div className="flex w-max gap-2 sm:w-auto sm:flex-wrap">
@@ -199,7 +199,7 @@ export function FilterBar({
         </div>
       )}
 
-      {/* Tags panel — only when Tags button opened and a main category is selected */}
+      {/* Tags panel - only when Tags button opened and a main category is selected */}
       {tagsOpen && activeMain && (
         <div className="rounded-xl border bg-muted/30 p-3 sm:p-4">
           <div className="mb-2 flex items-center justify-between gap-2">

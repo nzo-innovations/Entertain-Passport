@@ -1,4 +1,4 @@
-// Entertain Passport — Prisma schema
+// Entertain Passport - Prisma schema
 // Database: Supabase PostgreSQL.
 // DATABASE_URL  -> pooled connection (PgBouncer, port 6543) used at runtime.
 // DIRECT_URL    -> direct connection (port 5432) used for migrations.
@@ -21,6 +21,9 @@ model User {
   id            String   @id // == auth.users.id
   email         String   @unique
   phone         String?  @unique
+  firstName     String?
+  lastName      String?
+  nic           String?  @unique // Legacy NIC mirror; set only when idType = NIC.
   name          String?
   avatarUrl     String?
   role          String   @default("CUSTOMER") // CUSTOMER | SUPER_ADMIN | ORGANIZER | ARTIST_MANAGER | ARTIST | BUSINESS_OWNER | GATE_STAFF
@@ -30,8 +33,8 @@ model User {
   // to unlock loyalty rewards & offers (see profileIsComplete()).
   gender        String?   // MALE | FEMALE | OTHER | PREFER_NOT_TO_SAY
   birthday      DateTime?
-  idType        String?   // NIC | PASSPORT
-  idNumber      String?   // NIC / Passport number for loyalty program
+  idType        String?  @default("NIC") // Primary identity type: NIC or PASSPORT.
+  idNumber      String?  @unique // Primary customer identity number; nullable unique for legacy/admin users.
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -50,10 +53,18 @@ model User {
   heldTickets        Ticket[]             @relation("TicketHolder")
   passports          RfidCard[]           @relation("UserPassports")
   programmedCards    RfidCard[]           @relation("PassportProgrammer")
+  passportCardOrders PassportCardOrder[]
   soldPhysicalTickets PhysicalTicket[]    @relation("PhysicalTicketSeller")
   loyaltyOffersCreated LoyaltyOffer[]     @relation("LoyaltyOfferCreator")
   loyaltyOfferGrants   LoyaltyOfferGrant[] @relation("LoyaltyOfferGrantUser")
   loyaltyGrantsIssued  LoyaltyOfferGrant[] @relation("LoyaltyOfferGranter")
+  fulfilledPassportOrders PassportCardOrder[] @relation("PassportOrderFulfiller")
+  gateScans            GateScan[]           @relation("GateScanOperator")
+  passportBatchesGenerated PassportBatch[]  @relation("PassportBatchGenerator")
+  passportInventoryAssigned PassportNumberInventory[] @relation("PassportInventoryAssignee")
+  nfcProgrammingDone   NfcCardProgramming[] @relation("NfcCardProgrammer")
+  nfcProgrammingAsUser NfcCardProgramming[] @relation("NfcProgrammingUser")
+  seatHolds            SeatHold[]
 }
 
 model Address {
@@ -100,6 +111,7 @@ model Organization {
   events      Event[]
   artistEvents EventArtist[] @relation("ArtistEvents")
   venues      Venue[]          @relation("OrgVenues")
+  layoutTemplates VenueLayoutTemplate[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -217,6 +229,7 @@ model Venue {
   events      Event[]
   seatPrices  SeatPrice[]
   programs    VenueProgram[]
+  posts       VenuePost[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @default(now()) @updatedAt
 
@@ -244,6 +257,25 @@ model VenueProgram {
   updatedAt     DateTime @updatedAt
 
   @@index([venueId, dayOfWeek])
+}
+
+// Partner news, articles and updates for a published place listing.
+model VenuePost {
+  id          String   @id @default(cuid())
+  venueId     String
+  venue       Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  title       String
+  body        String
+  imageUrl    String?
+  detailLink  String?
+  publishedAt DateTime @default(now())
+  isPublished Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([venueId, publishedAt])
+  @@index([isPublished, publishedAt])
 }
 
 model SeatPrice {
@@ -307,6 +339,8 @@ model Event {
   artists        EventArtist[]
   physicalTickets PhysicalTicket[]
   tags           EventTag[]
+  gateScans      GateScan[]
+  eventSeatMap   EventSeatMap?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -371,6 +405,8 @@ model TicketPackage {
   price       Int
   qtyTotal    Int
   qtySold     Int         @default(0)
+  /// SEATED = pick seats on map · STANDING = GA standing area · GENERAL = no seat pick
+  ticketKind  String      @default("GENERAL")
   perksJson   String?
   sortOrder   Int         @default(0)
   cartItems   CartItem[]
@@ -404,6 +440,93 @@ model PhysicalTicket {
   @@index([eventId, status])
 }
 
+// ----- Seating layouts & reserved seats ---------------------------------------
+
+model VenueLayoutTemplate {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  name           String
+  description    String?
+  layoutJson     String
+  isSystem       Boolean  @default(false)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  eventSeatMaps  EventSeatMap[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isSystem])
+}
+
+model EventSeatMap {
+  id              String   @id @default(cuid())
+  eventId         String   @unique
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  templateId      String?
+  template        VenueLayoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  layoutJson      String
+  seatingEnabled  Boolean  @default(false)
+  published       Boolean  @default(false)
+  publishedAt     DateTime?
+  categories      SeatCategory[]
+  seats           Seat[]
+  holds           SeatHold[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SeatCategory {
+  id               String       @id @default(cuid())
+  eventSeatMapId   String
+  eventSeatMap     EventSeatMap @relation(fields: [eventSeatMapId], references: [id], onDelete: Cascade)
+  externalId       String
+  name             String
+  color            String
+  price            Int
+  enabled          Boolean      @default(true)
+  packageId        String?
+  sortOrder        Int          @default(0)
+
+  @@unique([eventSeatMapId, externalId])
+}
+
+model Seat {
+  id                 String       @id @default(cuid())
+  eventSeatMapId     String
+  eventSeatMap       EventSeatMap @relation(fields: [eventSeatMapId], references: [id], onDelete: Cascade)
+  externalId         String
+  sectionId          String?
+  tableId            String?
+  label              String
+  rowIndex           Int?
+  colIndex           Int?
+  categoryExternalId String?
+  status             String       @default("AVAILABLE") // AVAILABLE | HELD | SOLD | BLOCKED
+  enabled            Boolean      @default(true)
+  ticket             Ticket?
+
+  @@unique([eventSeatMapId, externalId])
+  @@index([eventSeatMapId, status])
+}
+
+model SeatHold {
+  id             String       @id @default(cuid())
+  eventSeatMapId String
+  eventSeatMap   EventSeatMap @relation(fields: [eventSeatMapId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seatIdsJson    String
+  heldAt         DateTime     @default(now())
+  idleReleaseAt  DateTime?
+  expiresAt      DateTime
+  maxExpiresAt   DateTime
+  phase          String       @default("SELECTING") // SELECTING | CHECKOUT | IDLE
+
+  @@index([eventSeatMapId, userId])
+  @@index([expiresAt])
+  @@index([maxExpiresAt])
+}
+
 // ----- Cart & Orders ----------------------------------------------------------
 
 model Cart {
@@ -434,6 +557,7 @@ model Order {
   status        String      @default("PENDING")
   subtotal      Int
   fees          Int
+  passportCardTotal Int @default(0)
   commissionAmt Int
   total         Int
   currency      String      @default("LKR")
@@ -465,7 +589,7 @@ model Ticket {
   id           String    @id @default(cuid())
   orderItemId  String
   orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
-  barcode      String    @unique // internal unique code (legacy; we check in via NFC/RFID now)
+  barcode      String    @unique // internal unique code (legacy; we check in via NFC now)
   qrCode       String    @unique // legacy alias / full payload token
   // Human-friendly / printed identifier an organizer can set & print on a ticket
   // so gate staff can check in by typing it. Optional and unique when present.
@@ -475,7 +599,7 @@ model Ticket {
   checkedInById String?
   checkedInBy  User?     @relation("TicketChecker", fields: [checkedInById], references: [id])
 
-  // NFC/RFID "Entertain Passport" linked to this ticket (tap to check in).
+  // NFC "Entertain Passport" linked to this ticket (tap to check in).
   rfidCardId   String?
   rfidCard     RfidCard? @relation(fields: [rfidCardId], references: [id], onDelete: SetNull)
 
@@ -486,32 +610,175 @@ model Ticket {
   holderName   String?
   holderNic    String?
 
+  seatId       String?   @unique
+  seat         Seat?     @relation(fields: [seatId], references: [id], onDelete: SetNull)
+
   createdAt    DateTime  @default(now())
 
   @@index([rfidCardId])
   @@index([holderUserId])
+  @@index([seatId])
 }
 
-// ----- NFC/RFID "Entertain Passport" cards ------------------------------------
+// ----- NFC "Entertain Passport" cards ------------------------------------
 
 model RfidCard {
   id             String    @id @default(cuid())
-  uid            String    @unique // raw NFC/RFID chip UID programmed by Super Admin
+  passportId     String?   @unique // secure 128-bit UUID v4 identity token
+  uid            String    @unique // raw NFC chip UID programmed by Super Admin
   passportNo     String    @unique // human-friendly Entertain Passport number
   label          String?
   status         String    @default("UNASSIGNED") // UNASSIGNED | ACTIVE | BLOCKED | LOST
+  keyVersion     Int       @default(1)
+  issuedAt       DateTime  @default(now())
+  counter        Int       @default(0)
+  signature      String?   // HMAC-SHA256 of tag payload (stored for audit; secret never on card beyond sig)
   assignedUserId String?
   assignedUser   User?     @relation("UserPassports", fields: [assignedUserId], references: [id], onDelete: SetNull)
   assignedAt     DateTime?
   programmedById String?
   programmedBy   User?     @relation("PassportProgrammer", fields: [programmedById], references: [id], onDelete: SetNull)
+  replacedByCardId String? @unique
+  replacedByCard   RfidCard? @relation("CardReplacement", fields: [replacedByCardId], references: [id], onDelete: SetNull)
+  replacesCard     RfidCard? @relation("CardReplacement")
+  passportCardOrderId String?
+  passportCardOrder   PassportCardOrder? @relation(fields: [passportCardOrderId], references: [id], onDelete: SetNull)
+  inventoryId         String?            @unique
+  inventory           PassportNumberInventory? @relation(fields: [inventoryId], references: [id], onDelete: SetNull)
+  walletCredentials   PassportWalletCredential[]
   tickets        Ticket[]
   offerGrants    LoyaltyOfferGrant[]
+  gateScans      GateScan[]
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@index([assignedUserId])
   @@index([assignedUserId, status])
+  @@index([status])
+}
+
+model PassportCardOrder {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quantity            Int      @default(1)
+  unitPrice           Int
+  total               Int
+  currency            String   @default("LKR")
+  paymentTiming       String   // PAY_NOW | DEFER_TO_NEXT_ORDER
+  status              String   @default("REQUESTED") // PENDING_PAYMENT | PAID | DEFERRED | FULFILLED | CANCELLED | REQUESTED
+  shippingMethod      String   @default("SL_REGISTERED_POST")
+  shippingName        String?
+  shippingPhone       String?
+  addressId           String?
+  addressSnapshotJson String?
+  paymentRef          String?
+  fulfilledAt         DateTime?
+  fulfilledById       String?
+  fulfilledBy         User?    @relation("PassportOrderFulfiller", fields: [fulfilledById], references: [id], onDelete: SetNull)
+  rfidCards           RfidCard[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+// ----- Public passport number inventory (print backlog) -----------------------
+
+model PassportBatch {
+  id            String   @id @default(cuid())
+  batchCode     String   @unique
+  cardType      String   // 11 Standard | 21 VIP | 31 Platinum | 41 Artist | 51 Staff | 61 Partner
+  quantity      Int
+  issueYear     Int      // 2-digit year e.g. 26 for 2026
+  status        String   @default("GENERATED") // GENERATED | EXPORTED | COMPLETE
+  generatedById String?
+  generatedBy   User?    @relation("PassportBatchGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
+  inventory     PassportNumberInventory[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([issueYear, cardType])
+}
+
+model PassportNumberInventory {
+  id                      String   @id @default(cuid())
+  publicPassportNumber    String   @unique // 16 digits, no spaces
+  formattedPassportNumber String   // 8826 1101 4837 2914
+  internalPassportUuid    String   @unique @default(uuid())
+  cardType                String
+  issueYear               Int
+  status                  String   @default("GENERATED")
+  // GENERATED | PRINTED | AVAILABLE | ASSIGNED | PROGRAMMED | BLOCKED | DAMAGED | REPLACED
+  batchId                 String?
+  batch                   PassportBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  assignedUserId          String?
+  assignedUser            User?    @relation("PassportInventoryAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  assignedAt              DateTime?
+  userPrimaryIdType       String?  // NIC | PASSPORT
+  userPrimaryIdHash       String?  // HMAC hash - never plain ID
+  programmedAt            DateTime?
+  rfidCard                RfidCard?
+  nfcProgramming          NfcCardProgramming[]
+  walletCredentials       PassportWalletCredential[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([status, cardType])
+  @@index([batchId])
+  @@index([assignedUserId])
+}
+
+model NfcCardProgramming {
+  id                   String   @id @default(cuid())
+  inventoryId          String
+  inventory            PassportNumberInventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  publicPassportNumber String
+  internalPassportUuid String
+  userId               String?
+  user                 User?    @relation("NfcProgrammingUser", fields: [userId], references: [id], onDelete: SetNull)
+  userPrimaryIdType    String?
+  userPrimaryIdHash    String?
+  nfcUid               String
+  keyVersion           Int      @default(1)
+  counter              Int      @default(0)
+  signature            String?
+  programmingStatus    String   @default("PENDING") // PENDING | PROGRAMMED | FAILED | REPLACED
+  programmedById       String?
+  programmedBy         User?    @relation("NfcCardProgrammer", fields: [programmedById], references: [id], onDelete: SetNull)
+  programmedAt         DateTime?
+  createdAt            DateTime @default(now())
+
+  @@index([inventoryId, createdAt(sort: Desc)])
+  @@index([internalPassportUuid])
+  @@index([nfcUid])
+  @@index([programmingStatus])
+}
+
+// Virtual Entertain Passport credentials (Google Wallet, Apple Wallet, etc.)
+model PassportWalletCredential {
+  id                 String   @id @default(cuid())
+  inventoryId        String
+  inventory          PassportNumberInventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  rfidCardId         String?
+  rfidCard           RfidCard? @relation(fields: [rfidCardId], references: [id], onDelete: SetNull)
+  platform           String   // GOOGLE | APPLE
+  credentialUid      String   @unique // VW… virtual UID bound into HMAC signature
+  keyVersion         Int      @default(1)
+  counter            Int      @default(0)
+  signature          String
+  issuedAt           DateTime @default(now())
+  externalObjectId   String?
+  smartTapRedemptionValue String? @unique // NFC Smart Tap token (gate lookup, no QR)
+  status             String   @default("ACTIVE") // ACTIVE | REVOKED
+  provisionedAt      DateTime @default(now())
+  lastSyncedAt       DateTime?
+  revokedAt          DateTime?
+
+  @@unique([inventoryId, platform])
+  @@index([rfidCardId])
+  @@index([credentialUid, status])
 }
 
 // ----- Artist tagging on events ----------------------------------------------
@@ -562,7 +829,7 @@ model LoyaltyOffer {
   maxTotalUsage    Int?
   minLoyaltyPoints Int?
   maxLoyaltyPoints Int?
-  passportNosJson  String? // JSON string[] — optional explicit allow-list
+  passportNosJson  String? // JSON string[] - optional explicit allow-list
 
   maxTotalGrants   Int?
   maxGrantsPerUser Int? @default(1)
@@ -619,11 +886,47 @@ model AuditLog {
   createdAt DateTime @default(now())
 }
 
+// HMAC key version registry (secrets live in env / KMS - never stored in DB).
+model NfcKeyVersion {
+  id        String   @id @default(cuid())
+  version   Int      @unique
+  label     String   @default("default")
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// Immutable gate / NFC scan audit trail.
+model GateScan {
+  id             String    @id @default(cuid())
+  eventId        String?
+  event          Event?    @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  rfidCardId     String?
+  rfidCard       RfidCard? @relation(fields: [rfidCardId], references: [id], onDelete: SetNull)
+  passportId     String
+  cardUid        String
+  counter        Int
+  verdict        String    // ALLOW | DENY
+  reason         String
+  scanType       String    // REGISTER | VERIFY | CHECK_IN
+  signatureValid Boolean?
+  scannedById    String?
+  scannedBy      User?     @relation("GateScanOperator", fields: [scannedById], references: [id], onDelete: SetNull)
+  payloadJson    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([eventId, createdAt(sort: Desc)])
+  @@index([rfidCardId, createdAt(sort: Desc)])
+  @@index([verdict, createdAt(sort: Desc)])
+  @@index([passportId])
+  @@index([scanType, createdAt(sort: Desc)])
+}
+
 model PlatformSettings {
   id                    String @id @default("default")
   defaultCommissionPct  Float  @default(5)
   freeStaffPerEvent     Int    @default(2)
   extraStaffMonthlyFee  Int    @default(1500) // cents per extra staff slot
+  passportCardPrice     Int    @default(50000) // minor units; default LKR 500
 
   // Loyalty earn rules (Super-Admin controlled).
   loyaltyEnabled           Boolean @default(true)

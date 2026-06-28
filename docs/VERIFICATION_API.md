@@ -1,8 +1,8 @@
-# Entertain Passport — Verification API (Design Document)
+# Entertain Passport - Verification API (Design Document)
 
-> **Status:** Decisions LOCKED (2026-06) — Phases 1–5 implemented. See §12 + §13.
+> **Status:** Decisions LOCKED (2026-06) - Phases 1–5 implemented. See §12 + §13.
 > **Owner:** Super Admin / Platform team
-> **Goal:** Turn the Entertain Passport NFC/RFID card into a secure, monetizable
+> **Goal:** Turn the Entertain Passport NFC card into a secure, monetizable
 > identity-verification *product* that third-party ticketing platforms can consume,
 > without ever exposing our sales / events / orders / financial data, and without
 > letting partners read the card without us.
@@ -18,7 +18,7 @@ session (see `findTicketByCode` in `src/lib/gate.ts`).
 We want to expose **card validation as a paid B2B service**. Other ticketing /
 event / venue platforms integrate their NFC readers with our API. When a user taps
 their Entertain Passport card on a partner's reader, the partner calls our API to
-confirm the card (and optionally the person) is genuine and active — and we charge
+confirm the card (and optionally the person) is genuine and active - and we charge
 for it.
 
 Four distinct problems this design solves:
@@ -40,27 +40,27 @@ Four distinct problems this design solves:
 | Roles | `SUPER_ADMIN` exists (`requireSuperAdmin` in `src/lib/auth.ts`) |
 | Card model | `RfidCard`: `uid` (raw chip UID, **plaintext**), `passportNo` (**plaintext**), `status`, `assignedUserId` |
 | Validation | Internal only; `findTicketByCode` matches `uid`/`passportNo` → `Ticket`, behind session + `canScanEventTickets` |
-| Data | RFID, users, tickets, orders, sales, commissions, events all share **one** Postgres + **one** Prisma client |
+| Data | NFC cards, users, tickets, orders, sales, commissions, events all share **one** Postgres + **one** Prisma client |
 
 Gaps for this product: no external API, no card encryption, no partner/tenant
 concept, no metering, no isolation between *card identity* data and *revenue* data.
 
 ---
 
-## 3. Target architecture — three isolated planes
+## 3. Target architecture - three isolated planes
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  CORE PLANE (existing app)                                    │
 │  events · orders · tickets · commissions · venues · users     │
-│  Prisma `public` schema — full access, internal only          │
+│  Prisma `public` schema - full access, internal only          │
 └───────────────┬───────────────────────────────────────────────┘
                 │  one-way, write-only sync (no path back)
                 ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  VERIFICATION PLANE (new, isolated)                           │
 │  passport identities (minimal) · card keys · partners · usage │
-│  `verification` schema — least-privilege role                 │
+│  `verification` schema - least-privilege role                 │
 └───────────────┬───────────────────────────────────────────────┘
                 │  signed, rate-limited, scoped
                 ▼
@@ -71,12 +71,12 @@ concept, no metering, no isolation between *card identity* data and *revenue* da
 
 **Key security property:** the process serving partner traffic connects to Postgres
 with a DB role that *physically cannot* `SELECT` from `Order`, `Ticket`, `Event`,
-etc. Even a full RCE on the API edge yields no sales data — it is not reachable by
+etc. Even a full RCE on the API edge yields no sales data - it is not reachable by
 that role.
 
 ---
 
-## 4. Data isolation — the core decision
+## 4. Data isolation - the core decision
 
 Options, weakest → strongest:
 
@@ -106,10 +106,10 @@ with minimal rework.
 ## 5. New data model (verification plane)
 
 All models below live in the `verification` schema. **PII is stored as salted hashes**
-— identity match works by hashing partner input the same way and comparing.
+- identity match works by hashing partner input the same way and comparing.
 
 ```prisma
-/// Minimal identity projection — the ONLY user data the API can read.
+/// Minimal identity projection - the ONLY user data the API can read.
 model VerifIdentity {
   id           String   @id @default(cuid())
   passportNo   String   @unique          // EP-XXXX-XXXX
@@ -161,7 +161,7 @@ model ApiClient {
   @@schema("verification")
 }
 
-/// Every API call — the Super-Admin monitoring backbone.
+/// Every API call - the Super-Admin monitoring backbone.
 model ApiRequestLog {
   id           String   @id @default(cuid())
   apiClientId  String?
@@ -196,7 +196,7 @@ model UsageCounter {
 
 Realities and approach:
 
-- **UID is hardware and readable by any reader** — it cannot be hidden. We store only
+- **UID is hardware and readable by any reader** - it cannot be hidden. We store only
   its **HMAC** (`cardUidHash`), never the raw UID, in the verification plane.
 - **Encrypted data block** in the card's user memory holds `passportNo` + version +
   issue nonce, protected with **envelope encryption**: a per-card data key wrapped by
@@ -207,9 +207,9 @@ Realities and approach:
 - **Clone resistance (recommended for a paid security product):** use **MIFARE
   DESFire EV2/EV3** secure-element cards with AES mutual authentication and key
   diversification. With cheap UID-only cards (NTAG / MIFARE Classic) we can sign a
-  token but **cannot** prevent UID cloning — acceptable only if every verification is
+  token but **cannot** prevent UID cloning - acceptable only if every verification is
   backed by the server-side `status` + identity check.
-- **Key management:** master keys in a KMS (Supabase has none — use a cloud KMS or an
+- **Key management:** master keys in a KMS (Supabase has none - use a cloud KMS or an
   encrypted-secrets approach). Rotation supported via `keyVersion`.
 
 ---
@@ -236,13 +236,13 @@ Content-Type: application/json
 
 ### Two validation modes
 
-- **Mode A — Card tap:** partner reader sends card payload (UID + encrypted block /
+- **Mode A - Card tap:** partner reader sends card payload (UID + encrypted block /
   signed token) → we decrypt/verify → respond.
-- **Mode B — Identity match:** partner sends `passportNo` + one or more of
+- **Mode B - Identity match:** partner sends `passportNo` + one or more of
   `{name, nic, mobile}` → we hash + match → respond `valid / not valid` + scoped
   identity fields.
 
-Responses never include sales / financial data — only a verdict and the fields the
+Responses never include sales / financial data - only a verdict and the fields the
 partner's scope permits.
 
 ### Edge pipeline (before any DB identity read)
@@ -290,17 +290,17 @@ breach → soft warn → hard block per `ApiClient.monthlyQuota`.
 
 | Phase | Deliverable |
 |---|---|
-| **0 — Design lock** | This document; confirm isolation level, card hardware, scopes, pricing |
-| **1 — Verification plane** | `verification` schema + least-privilege role + 2nd Prisma client + one-way identity sync |
-| **2 — Partner & auth** | `Partner` / `ApiClient`, key issuance, HMAC signing, scopes, rate limits |
-| **3 — Verify endpoint** | `/api/v1/verify` (both modes) + `ApiRequestLog` |
-| **4 — Card crypto** | Envelope encryption / DESFire keying + rotation; update RFID programming flow |
-| **5 — Monitoring + metering** | Super-Admin `/admin/api` dashboards + billing rollups |
-| **6 — Hardening** | Pen-test pass; optional promotion of verification plane to a separate Supabase project |
+| **0 - Design lock** | This document; confirm isolation level, card hardware, scopes, pricing |
+| **1 - Verification plane** | `verification` schema + least-privilege role + 2nd Prisma client + one-way identity sync |
+| **2 - Partner & auth** | `Partner` / `ApiClient`, key issuance, HMAC signing, scopes, rate limits |
+| **3 - Verify endpoint** | `/api/v1/verify` (both modes) + `ApiRequestLog` |
+| **4 - Card crypto** | Envelope encryption / DESFire keying + rotation; update NFC programming flow |
+| **5 - Monitoring + metering** | Super-Admin `/admin/api` dashboards + billing rollups |
+| **6 - Hardening** | Pen-test pass; optional promotion of verification plane to a separate Supabase project |
 
 ---
 
-## 12. Decisions — LOCKED (2026-06)
+## 12. Decisions - LOCKED (2026-06)
 
 1. **Isolation level:** **SEPARATE DATABASE now.** The verification plane has its own
    Prisma schema (`prisma/verification/schema.prisma`), its own generated client
@@ -318,7 +318,7 @@ breach → soft warn → hard block per `ApiClient.monthlyQuota`.
    (PAYG/STARTER/PRO/ENTERPRISE) provide baseline unit price + quota + rate limit; any
    partner can be individually overridden (`Partner.override*`). Metered via
    `ApiRequestLog` + `UsageCounter`.
-6. **Data-sharing / consent:** the API returns **validation status only** — no identity
+6. **Data-sharing / consent:** the API returns **validation status only** - no identity
    fields ever leave the plane. `PartnerConsent` records the accepted terms version,
    legal basis, and the exact shared-field set (`["validation_status"]`).
 
@@ -334,7 +334,7 @@ breach → soft warn → hard block per `ApiClient.monthlyQuota`.
 | Auth pipeline | `src/lib/verify/auth.ts` |
 | Pricing/limit resolution | `src/lib/verify/limits.ts` |
 | Tap verify + metering | `src/lib/verify/verify-core.ts` |
-| One-way sync + provisioning | `src/lib/verify/sync.ts` (called from `src/app/api/admin/rfid/*`) |
+| One-way sync + provisioning | `src/lib/verify/sync.ts` (called from `src/app/api/admin/nfc/*`) |
 | Partner edge | `src/app/api/v1/verify/route.ts` |
 | Super-Admin APIs | `src/app/api/admin/verify/*` |
 | Super-Admin UI | `src/app/admin/api/*`, `src/components/admin/verify-*` |

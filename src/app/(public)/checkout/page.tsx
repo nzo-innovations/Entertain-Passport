@@ -4,12 +4,18 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CreditCard, Lock, Nfc, ShieldCheck, Sparkles, Wallet } from "lucide-react";
+import { CreditCard, Lock, ShieldCheck, Sparkles, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/lib/cart-store";
+import { resolveCheckoutDestination } from "@/lib/checkout-gate";
+import type { TicketHolderInput } from "@/lib/checkout-holders";
+import {
+  buildTicketSlots,
+  TicketHoldersForm,
+} from "@/components/checkout/ticket-holders-form";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { formatEventDate } from "@/lib/format";
@@ -25,11 +31,27 @@ import {
 export default function CheckoutPage() {
   const router = useRouter();
   const lines = useCart((s) => s.lines);
+  const seatedLines = useCart((s) => s.seatedLines);
+  const passportCheckoutOrderId = useCart((s) => s.passportCheckoutOrderId);
   const totals = useCart((s) => s.totals);
   const clear = useCart((s) => s.clear);
   const { toast } = useToast();
-  const t = totals();
+  const [passportOrderTotal, setPassportOrderTotal] = React.useState(0);
+  const t = totals(passportOrderTotal);
   const [submitting, setSubmitting] = React.useState(false);
+  const [deferredCardTotal, setDeferredCardTotal] = React.useState(0);
+  const [gateReady, setGateReady] = React.useState(false);
+  const [contact, setContact] = React.useState({
+    name: "",
+    email: "",
+    phone: "",
+    country: "Sri Lanka",
+  });
+  const [buyerName, setBuyerName] = React.useState("You");
+  const [ticketHolders, setTicketHolders] = React.useState<TicketHolderInput[]>([]);
+  const [holdersAssigned, setHoldersAssigned] = React.useState(true);
+
+  const ticketSlots = React.useMemo(() => buildTicketSlots(lines, seatedLines), [lines, seatedLines]);
 
   const [card, setCard] = React.useState("");
   const [exp, setExp] = React.useState("");
@@ -43,20 +65,128 @@ export default function CheckoutPage() {
     ? `Enter a valid ${brand === "amex" ? "4" : "3"}-digit security code.`
     : "";
   const cardValid = !cardError && !expError && !cvcError;
+  const hasTickets = lines.length > 0 || seatedLines.length > 0;
+  const hasPassportCheckout = Boolean(passportCheckoutOrderId);
+  const extraDeferred = hasPassportCheckout ? 0 : deferredCardTotal;
+  const grandTotal = t.total + extraDeferred;
+  const needsHolders = ticketSlots.length > 0;
 
-  if (lines.length === 0)
+  React.useEffect(() => {
+    let cancelled = false;
+    resolveCheckoutDestination().then((gate) => {
+      if (cancelled) return;
+      if (!gate.ok) {
+        router.replace(gate.href);
+        return;
+      }
+      setGateReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.user) return;
+        setContact({
+          name: data.user.displayName ?? "",
+          email: data.user.email ?? "",
+          phone: data.user.phone ?? "",
+          country: data.user.country ?? "Sri Lanka",
+        });
+        setBuyerName(data.user.displayName ?? "You");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleHoldersChange = React.useCallback(
+    (holders: TicketHolderInput[], allAssigned: boolean) => {
+      setTicketHolders(holders);
+      setHoldersAssigned(allAssigned);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!passportCheckoutOrderId) {
+      setPassportOrderTotal(0);
+      return;
+    }
+    fetch("/api/account/passport-cards", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const order =
+          data?.orders?.find((o: { id: string }) => o.id === passportCheckoutOrderId) ??
+          data?.pendingCheckout;
+        setPassportOrderTotal(order?.total ?? 0);
+      })
+      .catch(() => {
+        if (!cancelled) setPassportOrderTotal(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [passportCheckoutOrderId]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/account/passport-cards", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.deferredTotal) setDeferredCardTotal(data.deferredTotal);
+        else if (!cancelled) setDeferredCardTotal(0);
+      })
+      .catch(() => {
+        if (!cancelled) setDeferredCardTotal(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!hasTickets && !hasPassportCheckout)
     return (
       <div className="container py-20 text-center">
         <h1 className="font-display text-3xl font-bold">Your cart is empty</h1>
-        <p className="mt-2 text-muted-foreground">Browse events to add tickets first.</p>
-        <Button className="mt-6" variant="brand" asChild>
-          <Link href="/events">Discover events</Link>
-        </Button>
+        <p className="mt-2 text-muted-foreground">Browse events or order your Entertain Passport card.</p>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Button variant="brand" asChild>
+            <Link href="/events">Discover events</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/account/passport">Order Entertain Passport</Link>
+          </Button>
+        </div>
       </div>
     );
 
+  if (!gateReady) {
+    return (
+      <div className="container py-20 text-center">
+        <p className="text-muted-foreground">Preparing checkout…</p>
+      </div>
+    );
+  }
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (needsHolders && !holdersAssigned) {
+      toast({
+        title: "Assign every ticket",
+        description: "Each ticket needs a holder before you can pay.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!cardValid) {
       setTouched({ card: true, exp: true, cvc: true });
       toast({
@@ -73,6 +203,12 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: lines.map((l) => ({ packageId: l.packageId, qty: l.qty })),
+          seatedItems: seatedLines.map((l) => ({
+            eventId: l.eventId,
+            seatExternalIds: l.seatExternalIds,
+          })),
+          ticketHolders: needsHolders ? ticketHolders : undefined,
+          passportCardOrderIds: passportCheckoutOrderId ? [passportCheckoutOrderId] : undefined,
         }),
       });
 
@@ -96,10 +232,14 @@ export default function CheckoutPage() {
 
       toast({
         title: "Payment confirmed",
-        description: "Your tickets are ready with scannable barcodes.",
+        description: hasPassportCheckout && !hasTickets
+          ? "Your Entertain Passport card order is confirmed."
+          : "Your tickets are ready in your wallet.",
       });
       clear();
-      router.push("/account/tickets?ok=1");
+      router.push(
+        hasPassportCheckout && !hasTickets ? "/account/passport?ok=1" : "/account/tickets?ok=1"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -107,7 +247,9 @@ export default function CheckoutPage() {
 
   return (
     <div className="container max-w-6xl py-12">
-      <h1 className="font-display text-3xl font-bold">Checkout</h1>
+      <h1 className="font-display text-3xl font-bold">
+        {hasPassportCheckout && !hasTickets ? "Checkout - Entertain Passport card" : "Checkout"}
+      </h1>
       <p className="text-sm text-muted-foreground">
         We hold your seats for 10 minutes while you complete your purchase.
       </p>
@@ -116,14 +258,50 @@ export default function CheckoutPage() {
         <form onSubmit={onSubmit} className="space-y-6">
           <Section title="1. Contact info">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Full name" name="name" placeholder="Jane Doe" required />
-              <Field label="Email" name="email" type="email" placeholder="jane@email.com" required />
-              <Field label="Mobile" name="phone" placeholder="+94 77 123 4567" required />
-              <Field label="Country" name="country" defaultValue="Sri Lanka" required />
+              <ControlledField
+                label="Full name"
+                value={contact.name}
+                onChange={(v) => setContact((c) => ({ ...c, name: v }))}
+                required
+              />
+              <ControlledField
+                label="Email"
+                type="email"
+                value={contact.email}
+                onChange={(v) => setContact((c) => ({ ...c, email: v }))}
+                required
+              />
+              <ControlledField
+                label="Mobile"
+                value={contact.phone}
+                onChange={(v) => setContact((c) => ({ ...c, phone: v }))}
+                placeholder="+94 77 123 4567"
+                required
+              />
+              <ControlledField
+                label="Country"
+                value={contact.country}
+                onChange={(v) => setContact((c) => ({ ...c, country: v }))}
+                required
+              />
             </div>
           </Section>
 
-          <Section title="2. Payment">
+          {needsHolders && (
+            <Section title={`2. Ticket holders (${ticketSlots.length})`}>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Ticket 1 is yours by default. For extra tickets, search a friend by Entertain
+                Passport number or add their NIC / passport ID manually.
+              </p>
+              <TicketHoldersForm
+                slots={ticketSlots}
+                buyerName={buyerName}
+                onChange={handleHoldersChange}
+              />
+            </Section>
+          )}
+
+          <Section title={`${needsHolders ? "3" : "2"}. Payment`}>
             <div className="grid gap-3 sm:grid-cols-2">
               <PaymentMethod active label="Card" hint="Visa · Mastercard · Amex" icon={CreditCard} />
               <PaymentMethod label="KOKO" hint="Pay later - coming soon" icon={Wallet} comingSoon />
@@ -192,12 +370,13 @@ export default function CheckoutPage() {
             </div>
           </Section>
 
-          <Section title="3. Review &amp; confirm">
+          <Section title={`${needsHolders ? "4" : "3"}. Review & confirm`}>
             <div className="mb-3 flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-              <Nfc className="mt-0.5 h-3.5 w-3.5 text-primary" />
+              <Sparkles className="mt-0.5 h-3.5 w-3.5 text-primary" />
               <span>
-                Entertain Passport holders earn loyalty rewards on this purchase and can tap their
-                card at the gate. No passport? You can still buy - rewards apply to passport holders only.
+                {hasPassportCheckout && !hasTickets
+                  ? "Pay securely with Visa, Mastercard or Amex via WebXPay. Your card will ship by SL registered post after payment."
+                  : "Entertain Passport members earn loyalty rewards on ticket purchases. Assign holders above so each guest can enter with their card or ID."}
               </span>
             </div>
             <label className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -211,9 +390,13 @@ export default function CheckoutPage() {
               variant="brand"
               size="lg"
               className="mt-4 w-full"
-              disabled={submitting || !cardValid}
+              disabled={submitting || !cardValid || (needsHolders && !holdersAssigned)}
             >
-              {submitting ? "Processing..." : `Buy tickets · ${formatCurrency(t.total / 100)}`}
+              {submitting
+                ? "Processing..."
+                : hasPassportCheckout && !hasTickets
+                  ? `Pay ${formatCurrency(grandTotal / 100)}`
+                  : `Buy tickets - ${formatCurrency(grandTotal / 100)}`}
             </Button>
           </Section>
         </form>
@@ -224,6 +407,23 @@ export default function CheckoutPage() {
               <h3 className="font-display text-lg font-semibold">Order summary</h3>
             </div>
             <ul className="divide-y">
+              {hasPassportCheckout && passportOrderTotal > 0 && (
+                <li className="flex gap-3 p-4">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <CreditCard className="h-8 w-8" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">Entertain Passport card</p>
+                    <p className="text-xs text-muted-foreground">Physical membership card · SL registered post</p>
+                    <div className="mt-1 flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">x 1</span>
+                      <span className="font-semibold tabular-nums">
+                        {formatCurrency(passportOrderTotal / 100)}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              )}
               {lines.map((l) => (
                 <li key={l.packageId} className="flex gap-3 p-4">
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg">
@@ -245,17 +445,25 @@ export default function CheckoutPage() {
               ))}
             </ul>
             <div className="space-y-2 border-t px-5 py-4 text-sm">
-              <Row label="Subtotal" value={formatCurrency(t.subtotal / 100)} />
+              {t.subtotal > 0 && <Row label="Tickets subtotal" value={formatCurrency(t.subtotal / 100)} />}
+              {t.passportCard > 0 && (
+                <Row label="Entertain Passport card" value={formatCurrency(t.passportCard / 100)} />
+              )}
               <Row label="Service fee" value={formatCurrency(t.fees / 100)} />
+              {extraDeferred > 0 && (
+                <Row label="Deferred Passport card" value={formatCurrency(extraDeferred / 100)} />
+              )}
               <Separator />
               <div className="flex items-center justify-between text-base font-semibold">
                 <span>Total</span>
-                <span className="tabular-nums">{formatCurrency(t.total / 100)}</span>
+                <span className="tabular-nums">{formatCurrency(grandTotal / 100)}</span>
               </div>
-              <p className="flex items-center gap-1.5 pt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                <Sparkles className="h-3.5 w-3.5" />
-                You&apos;ll earn {t.loyaltyEarned} loyalty points after this order ships.
-              </p>
+              {t.loyaltyEarned > 0 && (
+                <p className="flex items-center gap-1.5 pt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  You&apos;ll earn {t.loyaltyEarned} loyalty points on this order.
+                </p>
+              )}
             </div>
           </div>
 
@@ -278,6 +486,37 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="font-display text-lg font-semibold">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+function ControlledField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block space-y-1.5 text-sm">
+      <span className="font-medium">{label}</span>
+      <Input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        required={required}
+        readOnly={label === "Email"}
+        className={label === "Email" ? "bg-muted/40" : undefined}
+      />
+    </label>
   );
 }
 

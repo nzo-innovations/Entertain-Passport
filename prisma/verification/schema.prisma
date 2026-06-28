@@ -1,13 +1,13 @@
 // ============================================================
-// Entertain Passport — VERIFICATION PLANE schema (ISOLATED)
+// Entertain Passport - VERIFICATION PLANE schema (ISOLATED)
 // ============================================================
 // This schema is deployed to a SEPARATE database from the core app
-// (decision lock: docs/VERIFICATION_API.md §12 — "separate DB now").
+// (decision lock: docs/VERIFICATION_API.md §12 - "separate DB now").
 //
 //   * It holds NO sales / orders / events / financial data.
 //   * PII is stored only as salted+peppered hashes (never plaintext).
 //   * The runtime DB role (VERIFY_DATABASE_URL) must have privileges ONLY on
-//     this database — never on the core `public` schema. Even a full RCE on the
+//     this database - never on the core `public` schema. Even a full RCE on the
 //     partner edge cannot reach revenue data.
 //
 // Generated to src/generated/verify-client and consumed via @/lib/verify-db.
@@ -30,12 +30,12 @@ datasource db {
 model VerifIdentity {
   id          String   @id @default(cuid())
   passportNo  String   @unique // EP-XXXX-XXXX (public, low-sensitivity handle)
-  cardUidHash String   @unique // HMAC(uid, pepper) — raw chip UID never stored
+  cardUidHash String   @unique // HMAC(uid, pepper) - raw chip UID never stored
   status      String   @default("UNASSIGNED") // ACTIVE | BLOCKED | LOST | UNASSIGNED
   nameHash    String? // salted+peppered hash, never plaintext
   nicHash     String?
   mobileHash  String?
-  // Optional human label for Super-Admin monitoring ONLY — never returned to a
+  // Optional human label for Super-Admin monitoring ONLY - never returned to a
   // partner under the tap-only / verdict-only contract.
   adminLabel  String?
   syncedAt    DateTime @updatedAt
@@ -67,7 +67,7 @@ model VerifCardKey {
 
 // ----- Pricing plans (Super-Admin managed) ------------------------------------
 // Default plan limits. A Partner may individually override any of these
-// (see Partner.override* fields) — overrides win, else the plan value applies.
+// (see Partner.override* fields) - overrides win, else the plan value applies.
 model VerifPlan {
   id                  String    @id @default(cuid())
   code                String    @unique // PAYG | STARTER | PRO | ENTERPRISE
@@ -133,7 +133,7 @@ model ApiClient {
 }
 
 // ----- Data-sharing / consent (what may be returned, under what legal basis) --
-// Under the locked contract the API returns ONLY validation status — no identity
+// Under the locked contract the API returns ONLY validation status - no identity
 // fields. This row records the accepted terms version, the legal basis, and the
 // exact set of shared fields agreed with the partner.
 model PartnerConsent {
@@ -167,7 +167,7 @@ model ApiRequestLog {
   billable    Boolean  @default(false)
   priceMinor  Int      @default(0)
   reason      String?
-  // Set on successful taps — used for loyalty usage counts (never returned to partners).
+  // Set on successful taps - used for loyalty usage counts (never returned to partners).
   passportNo  String?
   createdAt   DateTime @default(now())
 

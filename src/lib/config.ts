@@ -34,12 +34,14 @@ export const ROUTES = {
   adminLogin: "/third-eye/999/login",
   profile: "/account/profile",
   tickets: "/account/tickets",
+  passport: "/account/passport",
+  discover: "/",
   createEvent: "/portal/events/new",
   gate: "/gate",
   contact: "/contact",
 } as const;
 
-/** Public nav label for /venues — pubs, clubs, cafés, restaurants & dating spots. */
+/** Public nav label for /venues - pubs, clubs, cafés, restaurants & dating spots. */
 export const PLACES_LABEL = "Places to Go";
 
 /**

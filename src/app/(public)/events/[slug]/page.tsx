@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { Calendar, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ImageGallery } from "@/components/events/image-gallery";
-import { PackageSelector } from "@/components/events/package-selector";
+import { EventTicketPanel } from "@/components/seating/event-ticket-panel";
+import { parseLayoutJson } from "@/lib/seating/layout-utils";
+import { parseTicketKind } from "@/lib/seating/package-sync";
 import { SocialAndShare } from "@/components/events/social-and-share";
 import { getEventBySlug } from "@/lib/events";
-import { formatEventDateLong, formatEventDate } from "@/lib/format";
+import { formatEventDateLong, formatEventDate, toIsoString } from "@/lib/format";
 
 export const revalidate = 60;
 
@@ -32,8 +34,8 @@ export default async function EventDetailPage({ params }: { params: { slug: stri
         <span className="text-foreground line-clamp-1">{event.title}</span>
       </nav>
 
-      <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-8">
+      <div className="grid min-w-0 gap-10 lg:grid-cols-[1.4fr_1fr]">
+        <div className="min-w-0 space-y-8">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="brand">{event.category.name}</Badge>
@@ -106,13 +108,13 @@ export default async function EventDetailPage({ params }: { params: { slug: stri
           <SocialAndShare social={event.socialLinks} title={event.title} />
         </div>
 
-        <aside className="lg:sticky lg:top-24 lg:h-fit">
-          <PackageSelector
+        <aside className="min-w-0 lg:sticky lg:top-24 lg:h-fit">
+          <EventTicketPanel
             event={{
               id: event.id,
               slug: event.slug,
               title: event.title,
-              startsAt: event.startsAt,
+              startsAt: toIsoString(event.startsAt),
               primaryImage: event.primaryImage?.url ?? images[0] ?? "",
             }}
             packages={event.packages.map((p) => ({
@@ -122,8 +124,16 @@ export default async function EventDetailPage({ params }: { params: { slug: stri
               price: p.price,
               qtyTotal: p.qtyTotal,
               qtySold: p.qtySold,
-              perks: p.perks,
+              ticketKind: parseTicketKind(p.ticketKind),
+              sortOrder: p.sortOrder,
             }))}
+            seatingEnabled={event.eventSeatMap?.seatingEnabled ?? false}
+            seatingPublished={event.eventSeatMap?.published ?? false}
+            layout={
+              event.eventSeatMap?.layoutJson
+                ? parseLayoutJson(event.eventSeatMap.layoutJson)
+                : undefined
+            }
           />
         </aside>
       </div>

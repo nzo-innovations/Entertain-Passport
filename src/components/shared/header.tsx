@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Search, ShoppingBag, User, Sparkles } from "lucide-react";
+import { Menu, Search, ShoppingBag, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
+import { CustomerAccountMenu, CustomerAccountMenuMobile } from "./customer-account-menu";
 import { useCart } from "@/lib/cart-store";
 import { cn } from "@/lib/utils";
 
@@ -100,12 +101,7 @@ export function Header() {
 
           <ThemeToggle />
 
-          <Button variant="outline" size="sm" asChild className="hidden sm:inline-flex">
-            <Link href="/login">
-              <User className="h-4 w-4" />
-              Sign in
-            </Link>
-          </Button>
+          <CustomerAccountMenu />
 
           <Button variant="brand" size="sm" asChild className="hidden sm:inline-flex">
             <Link href="/organizer/login">
@@ -145,12 +141,7 @@ export function Header() {
                 })}
               </nav>
               <div className="mt-6 flex flex-col gap-2 border-t pt-6">
-                <Button variant="outline" asChild className="w-full justify-center">
-                  <Link href="/login" onClick={() => setMenuOpen(false)}>
-                    <User className="h-4 w-4" />
-                    Sign in
-                  </Link>
-                </Button>
+                <CustomerAccountMenuMobile onNavigate={() => setMenuOpen(false)} />
                 <Button variant="brand" asChild className="w-full justify-center">
                   <Link href="/organizer/login" onClick={() => setMenuOpen(false)}>
                     <Sparkles className="h-4 w-4" />

@@ -1,6 +1,6 @@
 import { db } from "./db";
+import { normalizeIdentityLookup } from "./identity";
 import { UserRole, TicketStatus } from "./types";
-import { parseQrPayload } from "./tickets";
 
 /** Events a user is allowed to run gate check-in for. */
 export async function getGateEventsForUser(userId: string, role?: string) {
@@ -30,56 +30,62 @@ export async function getEventCheckinStats(eventId: string) {
 export type ResolvedTicket = Awaited<ReturnType<typeof findTicketByCode>>;
 
 /**
- * Resolves a typed/tapped code to a ticket for a given event. Accepts (in order)
- * the printed ticket code, the internal barcode, the QR payload, or an NFC/RFID
- * Entertain Passport (chip UID or passport number).
+ * Resolves a typed/tapped code to a ticket for a given event. Gate lookup is
+ * limited to customer NIC/passport identity or an Entertain Passport card UID/card number.
  */
 export async function findTicketByCode(eventId: string, rawCode: string) {
   const code = rawCode.trim();
   if (!code) return null;
+  const identityNumber = normalizeIdentityLookup(code);
+  const insensitive = "insensitive" as const;
 
   const include = {
     rfidCard: { select: { passportNo: true, uid: true } },
-    holder: { select: { id: true, name: true, email: true } },
+    holder: { select: { id: true, name: true, email: true, nic: true, idType: true, idNumber: true } },
     orderItem: {
       include: {
         event: { select: { id: true, title: true } },
         package: { select: { id: true, name: true } },
         order: {
           include: {
-            user: { select: { id: true, name: true, email: true, phone: true } },
+            user: { select: { id: true, name: true, email: true, phone: true, nic: true, idType: true, idNumber: true } },
           },
         },
       },
     },
   } as const;
 
-  // 1) Printed ticket code (scoped to event)
+  const identityMatches = [
+    { holderNic: { equals: identityNumber, mode: insensitive } },
+    { holder: { is: { nic: { equals: identityNumber, mode: insensitive } } } },
+    { holder: { is: { idNumber: { equals: identityNumber, mode: insensitive } } } },
+    { orderItem: { order: { user: { nic: { equals: identityNumber, mode: insensitive } } } } },
+    { orderItem: { order: { user: { idNumber: { equals: identityNumber, mode: insensitive } } } } },
+  ];
+
+  // 1) NIC/passport typed at the gate. Prefer an unused ticket, then fall back so the
+  // caller can surface "already checked in" instead of "not found".
   let ticket = await db.ticket.findFirst({
-    where: { ticketCode: code, orderItem: { eventId } },
+    where: { orderItem: { eventId }, status: TicketStatus.VALID, OR: identityMatches },
     include,
   });
   if (ticket) return ticket;
-
-  // 2) Internal barcode / QR payload
-  const { barcode } = parseQrPayload(code);
   ticket = await db.ticket.findFirst({
-    where: { OR: [{ barcode }, { barcode: code }, { qrCode: code }], orderItem: { eventId } },
+    where: { orderItem: { eventId }, OR: identityMatches },
     include,
   });
   if (ticket) return ticket;
 
-  // 3) Holder NIC/passport number typed at the gate.
-  ticket = await db.ticket.findFirst({
-    where: { holderNic: { equals: code, mode: "insensitive" }, orderItem: { eventId }, status: TicketStatus.VALID },
-    include,
-  });
-  if (ticket) return ticket;
-
-  // 4) NFC/RFID Entertain Passport: chip UID or passport number -> a VALID ticket
+  // 2) NFC Entertain Passport: chip UID or passport number -> a VALID ticket
   //    linked to that card for this event (fall back to any of its tickets).
   const card = await db.rfidCard.findFirst({
-    where: { OR: [{ uid: code }, { passportNo: code }] },
+    where: {
+      status: "ACTIVE",
+      OR: [
+        { uid: { equals: code, mode: insensitive } },
+        { passportNo: { equals: code, mode: insensitive } },
+      ],
+    },
     select: { id: true },
   });
   if (card) {

@@ -1,4 +1,4 @@
-# Verification API — Operations Runbook
+# Verification API - Operations Runbook
 
 Companion to `docs/VERIFICATION_API.md`. Covers provisioning the isolated
 verification plane, KMS, partner onboarding, the request-signing contract, and
@@ -19,9 +19,51 @@ Set these in `.env` (and Vercel project settings for prod):
 | `VERIFY_DIRECT_URL` | Direct connection (migrations) |
 | `VERIFY_KMS_PROVIDER` | `local` (dev) / `aws-kms` / `vault` |
 | `VERIFY_KMS_KEY_ID` | Master key reference, e.g. `ep-card-master` |
-| `VERIFY_LOCAL_MASTER_KEY` | base64(32 bytes) AES-256 — dev only |
+| `VERIFY_LOCAL_MASTER_KEY` | base64(32 bytes) AES-256 - dev only |
 | `VERIFY_HASH_PEPPER` | server-side pepper for UID/PII hashes |
 | `VERIFY_HMAC_MAX_SKEW_SECONDS` | replay window (default 120) |
+
+### Live connection (Mumbai - `vzvxphcdcmahwwgadrlp`)
+
+| Item | Value |
+|---|---|
+| Project ref | `vzvxphcdcmahwwgadrlp` |
+| Region | `ap-south-1` (Mumbai, same as core) |
+| Pooler host | `aws-1-ap-south-1.pooler.supabase.com` |
+
+```bash
+VERIFY_DATABASE_URL="postgresql://postgres.vzvxphcdcmahwwgadrlp:[PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10&pool_timeout=20&sslmode=require"
+VERIFY_DIRECT_URL="postgresql://postgres.vzvxphcdcmahwwgadrlp:[PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require"
+```
+
+> **Port mapping:** pooled = **6543** (`VERIFY_DATABASE_URL`), direct = **5432**
+> (`VERIFY_DIRECT_URL`). Do not swap them - Prisma migrations use `VERIFY_DIRECT_URL`.
+
+### Migrate from legacy verify project (`qwftvfhhyxipnpsjleio` → `vzvxphcdcmahwwgadrlp`)
+
+1. **Unpause** the legacy Sydney project in Supabase Dashboard (free tier pauses after inactivity).
+2. Add a one-off source URL to `.env` (direct, port 5432 - copy from Dashboard):
+
+```bash
+VERIFY_MIGRATE_SOURCE_URL="postgresql://postgres.qwftvfhhyxipnpsjleio:[PASSWORD]@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
+```
+
+3. Run:
+
+```bash
+npm run verify:migrate
+npm run verify:rls
+```
+
+4. Remove `VERIFY_MIGRATE_SOURCE_URL` when done.
+
+**If the legacy DB is unreachable**, rebuild card data from the core app (same pepper/KMS keys required):
+
+```bash
+npm run verify:backfill-from-core
+```
+
+Partners, API keys, usage logs, and billing counters live **only** in the verify DB - recreate them under **Super Admin → /admin/api** if a full dump is not available.
 
 Generate a dev master key:
 
@@ -53,7 +95,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 # 1. Point VERIFY_* at a DEDICATED database (separate Supabase project in prod).
 #    It must hold NO sales/orders/events/financial data.
 # 2. Confirm isolation, create schema + client, then seed pricing plans.
-npm run verify:guard      # must print "OK — verification DB is distinct"
+npm run verify:guard      # must print "OK - verification DB is distinct"
 npm run db:generate:verify
 npm run db:push:verify     # guarded
 npm run db:seed:verify     # guarded
@@ -92,7 +134,7 @@ sales / orders / events data even under full compromise of the partner edge.
 1. Onboard a partner; pick a plan (or override pricing later).
 2. Record data-sharing consent (terms version + legal basis). Shared fields are
    fixed to `validation_status`.
-3. Issue an API key — the **signing secret is shown once**. Share it securely.
+3. Issue an API key - the **signing secret is shown once**. Share it securely.
 4. Optionally set per-partner overrides (unit price, monthly quota, rate limit)
    and per-key IP allowlist / rate limit.
 
@@ -151,8 +193,8 @@ Failure reasons returned in `reason`: `missing_or_malformed_auth`,
 
 ## 6. Card lifecycle
 
-- **Program (Super Admin RFID):** creating a card provisions a per-card data key
-  and returns `cardBlock` (base64) — write this into the DESFire user memory.
+- **Program (Super Admin NFC):** creating a card provisions a per-card data key
+  and returns `cardBlock` (base64) - write this into the DESFire user memory.
 - **Assign / block / lost:** mirrored to `VerifIdentity.status` via one-way sync.
 - **Verify (tap):** edge unwraps the data key, decrypts the block, checks the
   passport + UID diversifier, and returns the status.
@@ -166,7 +208,7 @@ Failure reasons returned in `reason`: `missing_or_malformed_auth`,
   because retired master-key versions are retained in the KMS.
 - **Master key:** add a new version in the KMS, bump `VERIFY_KMS_KEY_VERSION`;
   new cards use it, old cards decrypt with their stored version.
-- **Partner secret:** Rotate from the key row — new secret shown once.
+- **Partner secret:** Rotate from the key row - new secret shown once.
 - **Pepper:** rotating `VERIFY_HASH_PEPPER` invalidates all hashes; only do this
   with a full re-sync of identities. Treat as a key.
 

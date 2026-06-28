@@ -14,7 +14,7 @@ export function generateKeyId(): string {
   return `pk_live_${randomBytes(12).toString("hex")}`;
 }
 
-/** Signing secret — shown to the partner exactly ONCE. */
+/** Signing secret - shown to the partner exactly ONCE. */
 export function generateSecret(): string {
   return `sk_live_${randomBytes(32).toString("base64url")}`;
 }

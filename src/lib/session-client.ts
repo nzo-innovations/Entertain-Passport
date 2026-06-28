@@ -1,4 +1,4 @@
-import { SESSION_MODE_COOKIE, WINDOW_ID_COOKIE, WINDOW_STORAGE_KEY } from "@/lib/session-config";
+import { WINDOW_STORAGE_KEY, touchLastActivity } from "@/lib/session-config";
 
 /** Bind server session TTL + per-window id after login (call from client). */
 export async function bindBrowserSession(): Promise<{
@@ -12,6 +12,7 @@ export async function bindBrowserSession(): Promise<{
   if (data.windowId) {
     sessionStorage.setItem(WINDOW_STORAGE_KEY, data.windowId);
   }
+  touchLastActivity();
   return { ok: true, windowId: data.windowId, mode: data.mode };
 }
 

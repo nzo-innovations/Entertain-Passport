@@ -1,4 +1,4 @@
-/** Shared upload rules — used by server processing and UI copy. */
+/** Shared upload rules - used by server processing and UI copy. */
 
 export const MAX_INPUT_BYTES = 10 * 1024 * 1024;
 

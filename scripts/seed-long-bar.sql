@@ -3,7 +3,7 @@
 -- Replace :ORG_ID with a BUSINESS_OWNER organization id from your database.
 
 -- Example: link to an existing business owner org
--- INSERT INTO "Venue" (...) — use Prisma/portal UI instead for easiest setup.
+-- INSERT INTO "Venue" (...) - use Prisma/portal UI instead for easiest setup.
 
 -- Weekly program seed (after venue exists):
 -- INSERT INTO "VenueProgram" ("id","venueId","title","performerName","actType","recurrence","dayOfWeek","startTime","endTime","isPublished","sortOrder","createdAt","updatedAt")

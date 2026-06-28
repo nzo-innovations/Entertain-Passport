@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/shared/theme-provider";
 import { ChunkLoadRecovery } from "@/components/shared/chunk-load-recovery";
+import { CustomerSessionProvider } from "@/components/auth/customer-session-provider";
 import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({
@@ -19,11 +20,11 @@ const display = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: {
-    default: "Entertain Passport - Your passport to every event.",
+    default: "Entertain Passport - The most powerful passport granting visa-free access to unforgettable experiences.",
     template: "%s · Entertain Passport",
   },
   description:
-    "Your passport to live entertainment - get your visa to every concert, festival, club night and show. Tap your Entertain Passport at the gate. Powered by nZO Innovations.",
+    "Your passport to live entertainment - get your visa to every concert, drama, nightlife, restaurant, dating, and unforgettable experience. Tap your Entertain Passport at the gate.",
 };
 
 export const viewport = {
@@ -38,9 +39,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${display.variable} font-sans`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-          <ChunkLoadRecovery />
-          {children}
-          <Toaster />
+          <CustomerSessionProvider>
+            <ChunkLoadRecovery />
+            {children}
+            <Toaster />
+          </CustomerSessionProvider>
         </ThemeProvider>
       </body>
     </html>

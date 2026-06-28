@@ -2,36 +2,28 @@
 
 import * as React from "react";
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Info,
   Nfc,
   Search,
   Users,
-  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { TicketOrderSheet, type OrderGroup } from "@/components/gate/ticket-order-sheet";
+import { NfcReaderStatus } from "@/components/gate/nfc-reader-status";
+import { NfcHardwareAccessPrompt } from "@/components/gate/nfc-hardware-access-prompt";
+import { GateAndroidWalletCollector } from "@/components/gate/gate-android-wallet-collector";
+import { GateTapPanel, type CheckInPhase, type PassportScanInfo } from "@/components/gate/gate-tap-panel";
+import { useToast } from "@/components/ui/use-toast";
+import { KEYBOARD_WEDGE_HINT } from "@/lib/nfc/usb-reader-filters";
+import { findSignedTagJsonString } from "@/lib/nfc/passport-ndef";
+import { useNfcReader } from "@/hooks/use-nfc-reader";
 import { cn } from "@/lib/utils";
 
 type Stats = { total: number; checkedIn: number; pending: number };
-type Result = {
-  ok: boolean;
-  result?: string;
-  message: string;
-  ticket?: {
-    id?: string;
-    holder?: string;
-    packageName?: string;
-    code?: string;
-    passportNo?: string | null;
-    isBulk?: boolean;
-  };
-  physicalTickets?: PhysicalSuggestion[];
-};
 type PhysicalSuggestion = {
   packageId: string;
   packageName: string;
@@ -43,7 +35,7 @@ type SearchRow = {
   holder: string;
   buyerName: string;
   packageName: string;
-  code: string;
+  identity: string;
   passportNo: string | null;
   status: string;
   checkedInAt: string | null;
@@ -61,21 +53,32 @@ const STATUS_FILTERS = [
 
 export function GateConsole({
   eventId,
+  eventTitle,
+  venueName,
   initialStats,
 }: {
   eventId: string;
   eventTitle: string;
+  venueName: string;
   initialStats: Stats;
 }) {
+  const { toast } = useToast();
   const [tab, setTab] = React.useState<Tab>("checkin");
   const [code, setCode] = React.useState("");
   const [stats, setStats] = React.useState<Stats>(initialStats);
-  const [result, setResult] = React.useState<Result | null>(null);
+  const [phase, setPhase] = React.useState<CheckInPhase>("ready");
+  const [resultMessage, setResultMessage] = React.useState("");
+  const [processingMs, setProcessingMs] = React.useState<number | null>(null);
+  const [orderGroup, setOrderGroup] = React.useState<OrderGroup | null>(null);
+  const [scannedTicketId, setScannedTicketId] = React.useState<string | null>(null);
+  const [passportScan, setPassportScan] = React.useState<PassportScanInfo | null>(null);
+  const [physicalTickets, setPhysicalTickets] = React.useState<PhysicalSuggestion[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [markingPhysicalId, setMarkingPhysicalId] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const processingStart = React.useRef<number | null>(null);
+  const processingTimer = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Lookup / log state
   const [q, setQ] = React.useState("");
   const [debouncedQ, setDebouncedQ] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<(typeof STATUS_FILTERS)[number]["id"]>("checked_in");
@@ -85,10 +88,37 @@ export function GateConsole({
   const [total, setTotal] = React.useState(0);
   const [searching, setSearching] = React.useState(false);
 
-  // Order detail sheet
   const [sheetOpen, setSheetOpen] = React.useState(false);
-  const [orderGroup, setOrderGroup] = React.useState<OrderGroup | null>(null);
+  const [sheetGroup, setSheetGroup] = React.useState<OrderGroup | null>(null);
   const [orderLoading, setOrderLoading] = React.useState(false);
+
+  const checkInRef = React.useRef<(value: string) => void>(() => {});
+
+  const nfcReader = useNfcReader({
+    enabled: tab === "checkin" && phase === "ready",
+    onRead: (payload) => checkInRef.current(payload),
+  });
+
+  const handleRequestHardwareAccess = React.useCallback(async () => {
+    await nfcReader.requestHardwareAccess();
+    if (nfcReader.webNfcSupported && nfcReader.status === "connected") {
+      toast({ title: "Built-in NFC ready", description: "Tap Entertain Passport on this device." });
+    }
+  }, [nfcReader, toast]);
+
+  const handlePairUsbReader = React.useCallback(async () => {
+    const result = await nfcReader.pairUsbReader();
+    if (result.ok) {
+      toast({ title: "Reader paired", description: result.label });
+      return;
+    }
+    if (result.mode === "cancelled" || result.mode === "keyboard-wedge") {
+      toast({ title: "Keyboard-mode reader?", description: KEYBOARD_WEDGE_HINT });
+      inputRef.current?.focus();
+    } else if (result.mode === "error") {
+      toast({ title: "Pair failed", description: result.message, variant: "destructive" });
+    }
+  }, [nfcReader, toast]);
 
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 300);
@@ -99,76 +129,40 @@ export function GateConsole({
     setPage(1);
   }, [debouncedQ, statusFilter]);
 
-  const openOrder = async (ticketId: string) => {
-    setSheetOpen(true);
-    setOrderLoading(true);
-    setOrderGroup(null);
-    try {
-      const res = await fetch(
-        `/api/gate/lookup?eventId=${eventId}&ticketId=${encodeURIComponent(ticketId)}`,
-        { cache: "no-store" }
-      );
-      const data = await res.json();
-      if (res.ok) setOrderGroup(data.group);
-    } finally {
-      setOrderLoading(false);
-    }
-  };
-
-  const checkIn = async (value: string) => {
-    const v = value.trim();
-    if (!v) return;
-    setLoading(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/gate/check-in", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId, code: v }),
-      });
-      const data = await res.json();
-      if (data.stats) setStats(data.stats);
-      setResult({
-        ok: !!data.ok,
-        result: data.result,
-        message: data.message ?? data.error ?? "Error",
-        ticket: data.ticket,
-        physicalTickets: data.physicalTickets ?? [],
-      });
-      setCode("");
-      if (data.ok && data.ticket?.id) {
-        void openOrder(data.ticket.id);
+  const startProcessingTimer = () => {
+    processingStart.current = performance.now();
+    setProcessingMs(0);
+    processingTimer.current = setInterval(() => {
+      if (processingStart.current != null) {
+        setProcessingMs(Math.round(performance.now() - processingStart.current));
       }
-      if (tab === "lookup") void fetchList();
-    } finally {
-      setLoading(false);
-      inputRef.current?.focus();
-    }
+    }, 50);
   };
 
-  const markPhysicalSold = async (physicalId: string) => {
-    setMarkingPhysicalId(physicalId);
-    try {
-      const res = await fetch(`/api/events/${eventId}/physical/${physicalId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "SOLD" }),
-      });
-      if (!res.ok) return;
-      setResult((current) => {
-        if (!current?.physicalTickets) return current;
-        return {
-          ...current,
-          physicalTickets: current.physicalTickets.map((group) => ({
-            ...group,
-            available: group.available.filter((t) => t.id !== physicalId),
-          })),
-        };
-      });
-    } finally {
-      setMarkingPhysicalId(null);
+  const stopProcessingTimer = () => {
+    if (processingTimer.current) clearInterval(processingTimer.current);
+    if (processingStart.current != null) {
+      setProcessingMs(Math.round(performance.now() - processingStart.current));
     }
+    processingStart.current = null;
   };
+
+  const fetchOrderGroup = React.useCallback(async (ticketId: string) => {
+    const res = await fetch(
+      `/api/gate/lookup?eventId=${eventId}&ticketId=${encodeURIComponent(ticketId)}`,
+      { cache: "no-store" }
+    );
+    const data = await res.json();
+    if (res.ok && data.group) {
+      const group = data.group as OrderGroup;
+      group.tickets = group.tickets.map((t) => ({
+        ...t,
+        isHighlighted: t.id === ticketId,
+      }));
+      return group;
+    }
+    return null;
+  }, [eventId]);
 
   const fetchList = React.useCallback(async () => {
     setSearching(true);
@@ -189,20 +183,198 @@ export function GateConsole({
     }
   }, [eventId, debouncedQ, statusFilter, page]);
 
+  const resetForNextScan = () => {
+    setPhase("ready");
+    setResultMessage("");
+    setProcessingMs(null);
+    setOrderGroup(null);
+    setScannedTicketId(null);
+    setPassportScan(null);
+    setPhysicalTickets([]);
+    setCode("");
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const checkIn = React.useCallback(
+    async (value: string) => {
+      const v = value.trim();
+      if (!v || loading || phase === "processing" || phase === "success") return;
+
+      setLoading(true);
+      setPhase("processing");
+      setResultMessage("");
+      setOrderGroup(null);
+      setScannedTicketId(null);
+      setPassportScan(null);
+      startProcessingTimer();
+
+      try {
+        let res: Response;
+        let data: Record<string, unknown>;
+
+        const nfcPayload = (() => {
+          const json = findSignedTagJsonString(v);
+          if (!json) return null;
+          try {
+            const p = JSON.parse(json) as Record<string, unknown>;
+            if (typeof p.signature === "string") {
+              if (typeof p.internalPassportUuid === "string") return p;
+              if (typeof p.passportId === "string") return p;
+            }
+          } catch {
+            /* legacy */
+          }
+          return null;
+        })();
+
+        if (nfcPayload) {
+          res = await fetch("/api/nfc/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...nfcPayload, eventId, checkIn: true }),
+          });
+          data = await res.json();
+          const verdict = data.verdict as string | undefined;
+          if (data.stats) setStats(data.stats as Stats);
+
+          if (verdict === "ALLOW") {
+            const ticketId = data.ticketId as string | undefined;
+            setResultMessage((data.reason as string) ?? "Welcome!");
+            setScannedTicketId(ticketId ?? null);
+            const channel = data.credentialChannel as PassportScanInfo["credentialChannel"] | undefined;
+            const passportNo = data.passportNo as string | undefined;
+            const holder = data.holder as string | undefined;
+            if (passportNo && holder && (channel === "PHYSICAL" || channel === "WALLET")) {
+              setPassportScan({
+                passportNo,
+                holder,
+                packageName: data.packageName as string | undefined,
+                credentialChannel: channel,
+              });
+            }
+            if (ticketId) {
+              const group = await fetchOrderGroup(ticketId);
+              setOrderGroup(group);
+            }
+            setPhase("success");
+          } else {
+            setResultMessage((data.reason as string) ?? (data.error as string) ?? "Entry denied");
+            setPhase("denied");
+          }
+        } else {
+          res = await fetch("/api/gate/check-in", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ eventId, code: v }),
+          });
+          data = await res.json();
+          if (data.stats) setStats(data.stats as Stats);
+
+          if (data.ok) {
+            const ticket = data.ticket as { id?: string; holder?: string } | undefined;
+            setResultMessage((data.message as string) ?? "Entry granted");
+            setScannedTicketId(ticket?.id ?? null);
+            setPhysicalTickets((data.physicalTickets as PhysicalSuggestion[]) ?? []);
+            if (ticket?.id) {
+              const group = await fetchOrderGroup(ticket.id);
+              setOrderGroup(group);
+            }
+            setPhase("success");
+          } else {
+            setResultMessage((data.message as string) ?? (data.error as string) ?? "Entry denied");
+            setPhase("denied");
+          }
+        }
+
+        setCode("");
+        if (tab === "lookup") void fetchList();
+      } finally {
+        stopProcessingTimer();
+        setLoading(false);
+      }
+    },
+    [eventId, loading, phase, tab, fetchOrderGroup, fetchList]
+  );
+
+  checkInRef.current = checkIn;
+
+  const openOrder = async (ticketId: string) => {
+    setSheetOpen(true);
+    setOrderLoading(true);
+    setSheetGroup(null);
+    try {
+      const group = await fetchOrderGroup(ticketId);
+      setSheetGroup(group);
+    } finally {
+      setOrderLoading(false);
+    }
+  };
+
+  const markPhysicalSold = async (physicalId: string) => {
+    setMarkingPhysicalId(physicalId);
+    try {
+      const res = await fetch(`/api/events/${eventId}/physical/${physicalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "SOLD" }),
+      });
+      if (!res.ok) return;
+      setPhysicalTickets((current) =>
+        current.map((group) => ({
+          ...group,
+          available: group.available.filter((t) => t.id !== physicalId),
+        }))
+      );
+    } finally {
+      setMarkingPhysicalId(null);
+    }
+  };
+
+  const handleWalletVerified = React.useCallback(
+    async (result: {
+      passportScan: PassportScanInfo;
+      ticketId: string;
+      message: string;
+      stats?: Stats;
+    }) => {
+      if (result.stats) setStats(result.stats);
+      setPassportScan(result.passportScan);
+      setResultMessage(result.message);
+      setScannedTicketId(result.ticketId);
+      const group = await fetchOrderGroup(result.ticketId);
+      setOrderGroup(group);
+      setPhase("success");
+    },
+    [fetchOrderGroup]
+  );
+
+  const handleWalletDenied = React.useCallback((message: string) => {
+    setPassportScan(null);
+    setResultMessage(message);
+    setOrderGroup(null);
+    setScannedTicketId(null);
+    setPhase("denied");
+  }, []);
+
   React.useEffect(() => {
     if (tab === "lookup") void fetchList();
   }, [tab, fetchList]);
 
+  React.useEffect(() => {
+    if (tab === "checkin" && phase === "ready") {
+      const t = setTimeout(() => inputRef.current?.focus(), 100);
+      return () => clearTimeout(t);
+    }
+  }, [tab, phase]);
+
   return (
     <div className="space-y-4">
-      {/* Stats — always visible */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Stat label="Checked in" value={stats.checkedIn} tone="text-emerald-600" />
         <Stat label="Pending" value={stats.pending} tone="text-amber-600" />
         <Stat label="Total" value={stats.total} tone="text-foreground" />
       </div>
 
-      {/* Tab switcher */}
       <div className="flex rounded-xl border bg-muted/30 p-1">
         <TabButton active={tab === "checkin"} onClick={() => setTab("checkin")}>
           <Nfc className="h-4 w-4" /> Check in
@@ -214,77 +386,64 @@ export function GateConsole({
 
       {tab === "checkin" ? (
         <>
-          {/* Primary check-in — stays compact */}
-          <div className="rounded-2xl border bg-card p-4 sm:p-5">
-            <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Nfc className="h-4 w-4 text-primary" /> Tap card or enter ticket / passport ID
-            </label>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <Input
-                ref={inputRef}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Ticket code, RFID UID or EP-number"
-                className="min-w-0 flex-1 font-mono text-base tracking-wider sm:text-lg"
-                onKeyDown={(e) => e.key === "Enter" && code && checkIn(code)}
-                autoFocus
-              />
-              <Button
-                variant="brand"
-                size="lg"
-                className="w-full shrink-0 sm:w-auto"
-                disabled={!code || loading}
-                onClick={() => checkIn(code)}
-              >
-                {loading ? "..." : "Check in"}
-              </Button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              NFC readers type the card ID then Enter automatically.
-            </p>
-          </div>
+          {nfcReader.needsHardwarePermission && (
+            <NfcHardwareAccessPrompt
+              webNfcSupported={nfcReader.webNfcSupported}
+              webHidSupported={nfcReader.webHidSupported}
+              requesting={nfcReader.requestingAccess}
+              onRequestAccess={() => void handleRequestHardwareAccess()}
+            />
+          )}
 
-          {result && (
-            <div
-              className={cn(
-                "rounded-2xl border p-4 sm:p-5",
-                result.ok ? "border-emerald-500/40 bg-emerald-500/10" : "border-red-500/40 bg-red-500/10"
-              )}
-            >
-              <div className="flex items-start gap-3">
-                {result.ok ? (
-                  <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-500" />
-                ) : (
-                  <XCircle className="h-6 w-6 shrink-0 text-red-500" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold">{result.message}</p>
-                  {result.ticket?.holder && (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {result.ticket.holder} · {result.ticket.packageName}
-                    </p>
-                  )}
-                  {result.ticket?.id && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => openOrder(result.ticket!.id!)}
-                    >
-                      <Info className="h-4 w-4" />
-                      {result.ticket.isBulk ? "View buyer & all tickets" : "View purchase info"}
-                    </Button>
-                  )}
-                  {result.ok && result.physicalTickets && result.physicalTickets.length > 0 && (
-                    <PhysicalTicketQuickMark
-                      groups={result.physicalTickets}
-                      markingId={markingPhysicalId}
-                      onMarkSold={markPhysicalSold}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
+          <NfcReaderStatus
+            reader={nfcReader}
+            onRetry={() => void handleRequestHardwareAccess()}
+            onPairUsb={() => void handlePairUsbReader()}
+            pairingUsb={nfcReader.pairingUsb}
+            onFocusScan={() => inputRef.current?.focus()}
+          />
+
+          <GateAndroidWalletCollector
+            eventId={eventId}
+            disabled={loading || phase === "processing" || phase === "success"}
+            onVerified={(r) => void handleWalletVerified(r)}
+            onDenied={handleWalletDenied}
+          />
+
+          <GateTapPanel
+            phase={phase}
+            processingMs={processingMs}
+            resultMessage={resultMessage}
+            orderGroup={orderGroup}
+            scannedTicketId={scannedTicketId}
+            passportScan={passportScan}
+            venueName={venueName}
+            eventTitle={eventTitle}
+            code={code}
+            loading={loading}
+            onCodeChange={(v) => {
+              setCode(v);
+              nfcReader.reportWedgeInput(v);
+            }}
+            onFocus={() => nfcReader.setInputFocused(true)}
+            onBlur={() => nfcReader.setInputFocused(false)}
+            onManualSubmit={() => checkIn(code)}
+            onConfirmNext={resetForNextScan}
+            inputRef={inputRef}
+          />
+
+          {phase === "success" && physicalTickets.length > 0 && (
+            <PhysicalTicketQuickMark
+              groups={physicalTickets}
+              markingId={markingPhysicalId}
+              onMarkSold={markPhysicalSold}
+            />
+          )}
+
+          {phase === "success" && orderGroup && scannedTicketId && (
+            <Button variant="ghost" size="sm" className="w-full" onClick={() => openOrder(scannedTicketId)}>
+              <Info className="h-4 w-4" /> Full purchase details
+            </Button>
           )}
 
           <p className="text-center text-xs text-muted-foreground">
@@ -293,14 +452,13 @@ export function GateConsole({
         </>
       ) : (
         <>
-          {/* Search + filters */}
           <div className="rounded-2xl border bg-card p-4">
             <div className="flex items-center gap-2">
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search name, email, code or passport…"
+                placeholder="Search NIC, passport or card..."
                 className="h-9"
               />
             </div>
@@ -327,7 +485,6 @@ export function GateConsole({
             </p>
           </div>
 
-          {/* Paginated list — fixed max height, scroll inside */}
           <div className="rounded-2xl border bg-card">
             <ul className="max-h-[min(50vh,420px)] divide-y overflow-y-auto">
               {rows.map((r) => (
@@ -344,7 +501,7 @@ export function GateConsole({
                         {r.isBulk ? ` · ${r.orderTicketCount} tickets` : ""}
                       </p>
                       <p className="font-mono text-[11px] text-muted-foreground">
-                        {r.passportNo ?? r.code} · {r.packageName}
+                        {r.identity} - {r.packageName}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
@@ -367,26 +524,15 @@ export function GateConsole({
               )}
             </ul>
 
-            {/* Pagination */}
             {pages > 1 && (
               <div className="flex items-center justify-between border-t px-4 py-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                >
+                <Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                   <ChevronLeft className="h-4 w-4" /> Prev
                 </Button>
                 <span className="text-xs text-muted-foreground">
                   Page {page} of {pages}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={page >= pages}
-                  onClick={() => setPage((p) => p + 1)}
-                >
+                <Button variant="ghost" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
                   Next <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -399,12 +545,7 @@ export function GateConsole({
         </>
       )}
 
-      <TicketOrderSheet
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        group={orderGroup}
-        loading={orderLoading}
-      />
+      <TicketOrderSheet open={sheetOpen} onOpenChange={setSheetOpen} group={sheetGroup} loading={orderLoading} />
     </div>
   );
 }
@@ -422,12 +563,9 @@ function PhysicalTicketQuickMark({
   if (visibleGroups.length === 0) return null;
 
   return (
-    <div className="mt-4 rounded-xl border border-emerald-500/30 bg-background/70 p-3">
+    <div className="rounded-xl border border-emerald-500/30 bg-background/70 p-3">
       <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
         Mark physical ticket sold
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Showing available printed ticket numbers only for the categories in this buyer&apos;s purchase.
       </p>
       <div className="mt-3 space-y-3">
         {visibleGroups.map((group) => (
@@ -436,7 +574,7 @@ function PhysicalTicketQuickMark({
               <p className="text-sm font-semibold">{group.packageName}</p>
               <Badge variant="outline">Bought {group.purchasedQty}</Badge>
             </div>
-            <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto pr-1">
+            <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
               {group.available.map((ticket) => (
                 <Button
                   key={ticket.id}
@@ -446,7 +584,6 @@ function PhysicalTicketQuickMark({
                   disabled={markingId === ticket.id}
                   onClick={() => onMarkSold(ticket.id)}
                   className="h-8 font-mono text-xs"
-                  title={`Mark ${ticket.refCode} as sold`}
                 >
                   {markingId === ticket.id ? "..." : ticket.refCode}
                 </Button>

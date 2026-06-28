@@ -97,7 +97,7 @@ export function ImageGalleryEditor({
     try {
       await deleteStorageImageFromBrowser(url);
     } catch {
-      /* keep going — DB record may still be removed */
+      /* keep going - DB record may still be removed */
     }
     const next = images.filter((_, i) => i !== index);
     let primary = primaryIndex;

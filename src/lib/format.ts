@@ -19,3 +19,9 @@ export function formatRelative(date: Date | string) {
   if (Number.isNaN(d.getTime())) return "";
   return formatDistanceToNow(d, { addSuffix: true });
 }
+
+/** ISO string from Date or cached JSON date string (unstable_cache). */
+export function toIsoString(date: Date | string): string {
+  if (typeof date === "string") return date;
+  return date.toISOString();
+}

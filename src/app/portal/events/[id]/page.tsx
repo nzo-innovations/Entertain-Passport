@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, ExternalLink, Pencil, ScanLine } from "lucide-react";
+import { ArrowLeft, ExternalLink, LayoutGrid, Pencil, ScanLine } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { canManageEvent } from "@/lib/permissions";
 import { db } from "@/lib/db";
@@ -91,6 +91,12 @@ export default async function PortalEventDetailPage({ params }: { params: { id: 
           </div>
         )}
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/portal/events/${event.id}/seating`}>
+              <LayoutGrid className="h-4 w-4" />
+              Seating
+            </Link>
+          </Button>
           {canSubmit && <SubmitEventButton eventId={event.id} />}
           <Button variant="outline" size="sm" asChild>
             <Link href={`/portal/events/${event.id}/edit`}>
