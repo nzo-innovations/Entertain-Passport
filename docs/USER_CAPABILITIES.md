@@ -1,4 +1,4 @@
-# Entertain Passport — User Roles & Capabilities
+# Entertain Passport - User Roles & Capabilities
 
 Platform: **Entertain Passport** by nZO Innovations  
 Auth: Supabase (email/password + OAuth callback)
@@ -63,11 +63,11 @@ Only **published + approved** events and **published** venue profiles appear pub
 | Feature | Route / API | Notes |
 |---------|-------------|-------|
 | Browse & buy tickets | Public events + checkout | Cart persists in browser (Zustand) |
-| View my tickets | `/account/tickets` | QR/barcode, check-in status |
-| Complete profile | `/account/profile` | Optional for purchase; **required for loyalty rewards** |
-| Assign tickets to friends | Ticket assign UI | By Entertain Passport no. or NIC |
+| View my tickets | `/account/tickets` | NIC / passport identity or Entertain Passport entry identity, check-in status |
+| Complete profile | `/account/profile` | Optional for purchase; required for loyalty rewards and card delivery |
+| Assign tickets to friends | Ticket assign UI | By Entertain Passport no., NIC, or passport number |
 | Earn loyalty points | Checkout | 1 point per LKR 100 spent (when profile complete) |
-| Entertain Passport (RFID) | Checkout / tickets | Link NFC card to ticket for tap check-in |
+| Entertain Passport (NFC) | `/account/tickets` | Order/reorder a physical card; tap check-in when assigned |
 
 ### Unique to customers
 
@@ -93,7 +93,7 @@ Shared by: Event Organizer, Artist Manager, Artist, Company/Venue Owner, and Gat
 | Create event | `/portal/events/new` | Guided wizard; submits for platform review |
 | Manage event | `/portal/events/[id]` | Submit, staff, artists, ticket codes, check-in log |
 | Edit event | `/portal/events/[id]/edit` | Update draft / changes requested |
-| Event scanner | `/portal/events/[id]/scan` | QR/manual check-in (if permitted) |
+| Event scanner | `/portal/events/[id]/scan` | NIC, passport number, or Entertain Passport check-in (if permitted) |
 | Team | `/portal/team` | Add/update/remove gate staff accounts |
 
 ### Event lifecycle (organizers)
@@ -119,7 +119,7 @@ First **2 staff per event** are free; additional staff may incur platform fee (c
 
 | Org type | Extra capability |
 |----------|------------------|
-| **Business Owner** | **My Venue** `/portal/venue` — publish place on Places to Go, weekly program (no tickets), link ticketed events to venue profile |
+| **Business Owner** | **My Venue** `/portal/venue` - publish place on Places to Go, weekly program (no tickets), link ticketed events to venue profile |
 | **Artist / Artist Manager** | Tagged on events via **Artist tagger**; see events where org is performing artist |
 | **Event Organizer** | Full event publishing workflow (default) |
 
@@ -137,7 +137,7 @@ Business owners creating ticketed events can **reuse venue profile** in the even
 | Feature | Description |
 |---------|-------------|
 | View assigned events | Only events where user is event staff or org worker |
-| Check-in console | RFID wedge, manual code, search |
+| Check-in console | NFC wedge, manual code, search |
 | Lookup & log | Paginated attendee list, filters (checked in / pending) |
 | Purchase details | Buyer info, order tickets, holder labels (Buyer, Guest, Unknown member) |
 | Roll back check-in | **No** (Event Manager / org admin only) |
@@ -145,7 +145,7 @@ Business owners creating ticketed events can **reuse venue profile** in the even
 ### Unique session rules
 
 - **30-day** session TTL
-- **Per browser window** — new tab/window must sign in again (`WindowSessionGuard`)
+- **Per browser window** - new tab/window must sign in again (`WindowSessionGuard`)
 - Logout clears window session cookies + `sessionStorage`
 
 ---
@@ -163,7 +163,7 @@ Business owners creating ticketed events can **reuse venue profile** in the even
 | Approvals | `/admin/approvals` | Approve / reject / request changes on events |
 | All events | `/admin/events` | Full catalog; create events (auto-published) |
 | Organizations | `/admin/organizations` | Manage orgs, commission overrides |
-| Passports (RFID) | `/admin/rfid` | Program NFC cards, assign to users |
+| Passports (NFC) | `/admin/nfc` | Program NFC cards, assign to users |
 | Categories | `/admin/categories` | Event genres |
 | Venues | `/admin/venues` | Global venue catalog (admin CRUD) |
 | Alerts | `/admin/alerts` | Sales threshold alerts |
@@ -174,7 +174,7 @@ Business owners creating ticketed events can **reuse venue profile** in the even
 
 - Auto-approve & publish events on create
 - Set per-event or per-org commission
-- Program Entertain Passport RFID cards
+- Program Entertain Passport NFC cards
 - Full audit visibility
 - Access all gate/organizer functions without org membership
 
@@ -184,14 +184,14 @@ Business owners creating ticketed events can **reuse venue profile** in the even
 
 | Action | Customer | Organizer | Gate Staff | Super Admin |
 |--------|:--------:|:---------:|:----------:|:-----------:|
-| Buy tickets | ✓ | — | — | — |
-| Publish events (via review) | — | ✓ | — | ✓ (instant) |
-| Publish Places to Go | — | ✓ (Business Owner) | — | — |
-| Approve events | — | — | — | ✓ |
-| Program RFID cards | — | — | — | ✓ |
-| Gate check-in | — | ✓* | ✓* | ✓ |
-| Roll back check-in | — | ✓* | —** | ✓ |
-| Manage gate staff team | — | ✓ | — | — |
+| Buy tickets | ✓ | - | - | - |
+| Publish events (via review) | - | ✓ | - | ✓ (instant) |
+| Publish Places to Go | - | ✓ (Business Owner) | - | - |
+| Approve events | - | - | - | ✓ |
+| Program NFC cards | - | - | - | ✓ |
+| Gate check-in | - | ✓* | ✓* | ✓ |
+| Roll back check-in | - | ✓* | -** | ✓ |
+| Manage gate staff team | - | ✓ | - | - |
 
 \* When assigned as event staff or org admin  
 \** Gate staff scanners cannot roll back; Event Managers can
@@ -227,8 +227,8 @@ Auth:       /auth/callback  /auth/complete
 
 ## 11. Related docs
 
-- `docs/QA_MANUAL_TEST_GUIDE.md` — **manual QA handover** (step-by-step for testers new to the platform)
-- `docs/VERCEL_DEPLOY.md` — **initial Vercel deploy** (GitHub CD, env vars, Supabase Auth)
-- `docs/SUPABASE.md` — database, seeding, connection
-- `docs/ARCHITECTURE.md` — system architecture
-- `.env.example` — required environment variables
+- `docs/QA_MANUAL_TEST_GUIDE.md` - **manual QA handover** (step-by-step for testers new to the platform)
+- `docs/VERCEL_DEPLOY.md` - **initial Vercel deploy** (GitHub CD, env vars, Supabase Auth)
+- `docs/SUPABASE.md` - database, seeding, connection
+- `docs/ARCHITECTURE.md` - system architecture
+- `.env.example` - required environment variables

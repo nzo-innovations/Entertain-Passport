@@ -12,7 +12,7 @@ export default async function AdminSettingsPage() {
       <header>
         <h1 className="font-display text-2xl font-bold">Platform settings</h1>
         <p className="text-sm text-muted-foreground">
-          Global defaults for commission and event staffing.
+          Global defaults for commission, event staffing and Passport cards.
         </p>
       </header>
 
@@ -21,6 +21,7 @@ export default async function AdminSettingsPage() {
           defaultCommissionPct: settings?.defaultCommissionPct ?? DEFAULT_COMMISSION_PCT,
           freeStaffPerEvent: settings?.freeStaffPerEvent ?? 2,
           extraStaffMonthlyFee: settings?.extraStaffMonthlyFee ?? 1500,
+          passportCardPrice: settings?.passportCardPrice ?? 50_000,
         }}
       />
     </div>

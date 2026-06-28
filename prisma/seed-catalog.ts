@@ -180,7 +180,7 @@ async function main() {
   for (const row of orphanMains) {
     const events = await db.event.count({ where: { categoryId: row.id } });
     if (events > 0) {
-      console.warn(`[seed-catalog] orphan main ${row.slug} has ${events} events — manual review needed`);
+      console.warn(`[seed-catalog] orphan main ${row.slug} has ${events} events - manual review needed`);
       continue;
     }
     await db.category.delete({ where: { id: row.id } });

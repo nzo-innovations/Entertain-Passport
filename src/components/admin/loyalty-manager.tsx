@@ -441,7 +441,7 @@ export function LoyaltyManager({
                 <tr key={c.rfidCardId} className="border-b border-border/60">
                   <td className="py-2 pr-3 font-mono text-xs">{c.passportNo}</td>
                   <td className="py-2 pr-3">
-                    <div>{c.userName ?? "—"}</div>
+                    <div>{c.userName ?? "-"}</div>
                     <div className="text-xs text-muted-foreground">{c.userEmail ?? ""}</div>
                   </td>
                   <td className="py-2 pr-3 text-right tabular-nums">{c.loyaltyPoints}</td>

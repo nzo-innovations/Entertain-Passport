@@ -11,7 +11,7 @@ export function TicketAssign({ ticketId, holder }: { ticketId: string; holder: s
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<"passport" | "nic">("passport");
+  const [mode, setMode] = React.useState<"card" | "identity">("card");
   const [value, setValue] = React.useState("");
   const [name, setName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -21,9 +21,9 @@ export function TicketAssign({ ticketId, holder }: { ticketId: string; holder: s
     try {
       const body = reset
         ? {}
-        : mode === "passport"
+        : mode === "card"
         ? { passportNo: value, name }
-        : { nic: value, name };
+        : { identityNumber: value, name };
       const res = await fetch(`/api/tickets/${ticketId}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -58,23 +58,25 @@ export function TicketAssign({ ticketId, holder }: { ticketId: string; holder: s
         <div className="mt-2 space-y-2 rounded-xl border bg-muted/20 p-3">
           <div className="flex gap-2 text-xs">
             <button
-              className={mode === "passport" ? "font-semibold text-primary" : "text-muted-foreground"}
-              onClick={() => setMode("passport")}
+              type="button"
+              className={mode === "card" ? "font-semibold text-primary" : "text-muted-foreground"}
+              onClick={() => setMode("card")}
             >
-              By passport no.
+              By Entertain Passport no.
             </button>
             <span className="text-muted-foreground">·</span>
             <button
-              className={mode === "nic" ? "font-semibold text-primary" : "text-muted-foreground"}
-              onClick={() => setMode("nic")}
+              type="button"
+              className={mode === "identity" ? "font-semibold text-primary" : "text-muted-foreground"}
+              onClick={() => setMode("identity")}
             >
-              By NIC
+              By NIC / passport ID
             </button>
           </div>
           <Input
             value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={mode === "passport" ? "EP-XXXX-XXXX" : "Friend's NIC number"}
+            onChange={(e) => setValue(e.target.value.toUpperCase())}
+            placeholder={mode === "card" ? "EP-XXXX-XXXX" : "Friend's NIC or passport number"}
             className="h-8"
           />
           <Input

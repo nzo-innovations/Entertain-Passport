@@ -50,16 +50,16 @@ if (coreDirect && verifyDirect && (verifyDirect === coreDirect || project(verify
   fail("VERIFY_DIRECT_URL targets the CORE database. Use a separate database/Supabase project.");
 }
 
-// Obvious un-provisioned placeholder — let the static check pass but make it
+// Obvious un-provisioned placeholder - let the static check pass but make it
 // clear nothing will be pushed to the core DB.
 if (/CHANGE_ME|SEPARATE-PROJECT/i.test(verify)) {
   console.log(
-    "[verify-db-guard] VERIFY_DATABASE_URL is still a placeholder — set a real, separate DB before provisioning."
+    "[verify-db-guard] VERIFY_DATABASE_URL is still a placeholder - set a real, separate DB before provisioning."
   );
 }
 
 // ----- 2. LIVE fail-closed check ---------------------------------------------
-// Checks BOTH the pooled and the direct URL — `prisma db push` uses the direct
+// Checks BOTH the pooled and the direct URL - `prisma db push` uses the direct
 // URL, so that is the one that could actually drop core tables. Retries a few
 // times so a cold connection right after DB creation does not silently skip the
 // check.
@@ -92,7 +92,7 @@ async function liveCheckUrl(label, url) {
             "  Pushing the verification schema here would DROP core data. Use a truly separate DB."
         );
       }
-      console.log(`[verify-db-guard] LIVE CHECK OK (${label}) — target DB has no core tables.`);
+      console.log(`[verify-db-guard] LIVE CHECK OK (${label}) - target DB has no core tables.`);
       return;
     } catch (err) {
       lastErr = err;
@@ -103,15 +103,15 @@ async function liveCheckUrl(label, url) {
   console.log(
     `[verify-db-guard] ${label} not reachable after retries (` +
       (lastErr?.message?.split("\n")[0] ?? "connection error") +
-      ") — push will fail on its own if unreachable; static check passed."
+      ") - push will fail on its own if unreachable; static check passed."
   );
 }
 
 PrismaClient = await loadClient();
 if (!PrismaClient) {
-  console.log("[verify-db-guard] verify client not generated yet — skipping live check (static check passed).");
+  console.log("[verify-db-guard] verify client not generated yet - skipping live check (static check passed).");
 } else {
   await liveCheckUrl("VERIFY_DIRECT_URL", verifyDirect);
   await liveCheckUrl("VERIFY_DATABASE_URL", verify);
 }
-console.log("[verify-db-guard] OK — verification DB is distinct from the core DB.");
+console.log("[verify-db-guard] OK - verification DB is distinct from the core DB.");

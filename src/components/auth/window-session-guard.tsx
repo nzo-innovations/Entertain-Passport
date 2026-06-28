@@ -40,7 +40,7 @@ export function WindowSessionGuard({ loginPath = "/organizer/login" }: { loginPa
           router.refresh();
         }
       } catch {
-        /* network blip — keep session */
+        /* network blip - keep session */
       }
     }
 

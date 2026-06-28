@@ -1,19 +1,38 @@
 import { db } from "./db";
 import { describeTicketHolder } from "./gate-holders";
 import { findTicketByCode } from "./gate";
+import { profileIdentityDisplay } from "./profile";
+
+function gateIdentity(
+  ticket: {
+    holderUserId: string | null;
+    holderNic: string | null;
+    rfidCard?: { passportNo: string | null } | null;
+    holder?: { nic?: string | null; idType?: string | null; idNumber?: string | null } | null;
+  },
+  buyer: { id: string; nic?: string | null; idType?: string | null; idNumber?: string | null }
+) {
+  return (
+    ticket.rfidCard?.passportNo ??
+    (ticket.holderNic ? `ID ${ticket.holderNic}` : null) ??
+    profileIdentityDisplay(ticket.holder) ??
+    (ticket.holderUserId === buyer.id ? profileIdentityDisplay(buyer) : null) ??
+    "Entertain Passport"
+  );
+}
 
 export async function getOrderGroupForTicket(ticketId: string, eventId: string) {
   const anchor = await db.ticket.findFirst({
     where: { id: ticketId, orderItem: { eventId } },
     include: {
       rfidCard: { select: { passportNo: true } },
-      holder: { select: { id: true, name: true, email: true } },
+      holder: { select: { id: true, name: true, email: true, nic: true, idType: true, idNumber: true } },
       orderItem: {
         include: {
           package: { select: { name: true } },
           order: {
             include: {
-              user: { select: { id: true, name: true, email: true, phone: true } },
+              user: { select: { id: true, name: true, email: true, phone: true, nic: true, idType: true, idNumber: true } },
             },
           },
         },
@@ -29,7 +48,7 @@ export async function getOrderGroupForTicket(ticketId: string, eventId: string) 
     where: { orderItem: { orderId, eventId } },
     include: {
       rfidCard: { select: { passportNo: true } },
-      holder: { select: { id: true, name: true, email: true } },
+      holder: { select: { id: true, name: true, email: true, nic: true, idType: true, idNumber: true } },
       orderItem: { include: { package: { select: { name: true } } } },
     },
     orderBy: { createdAt: "asc" },
@@ -43,6 +62,9 @@ export async function getOrderGroupForTicket(ticketId: string, eventId: string) 
       name: buyer.name,
       email: buyer.email,
       phone: buyer.phone,
+      nic: buyer.nic,
+      idType: buyer.idType,
+      idNumber: buyer.idNumber,
     },
     packageName: anchor.orderItem.package.name,
     ticketCount: tickets.length,
@@ -54,7 +76,7 @@ export async function getOrderGroupForTicket(ticketId: string, eventId: string) 
         label,
         kind,
         status: t.status,
-        code: t.ticketCode ?? t.barcode,
+        identity: gateIdentity(t, buyer),
         passportNo: t.rfidCard?.passportNo ?? null,
         checkedInAt: t.checkedInAt,
         isHighlighted: t.id === ticketId,
@@ -82,7 +104,7 @@ export async function lookupByCode(eventId: string, code: string) {
     holder: label,
     kind,
     status: ticket.status,
-    code: ticket.ticketCode ?? ticket.barcode,
+    identity: gateIdentity(ticket, group.buyer),
     passportNo: ticket.rfidCard?.passportNo ?? null,
     packageName: ticket.orderItem.package.name,
     checkedInAt: ticket.checkedInAt,

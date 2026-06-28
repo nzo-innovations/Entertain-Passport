@@ -372,7 +372,7 @@ export function EventWizard({
                   className="mt-1 rounded border"
                 />
                 <span>
-                  <strong className="font-medium">Use my venue profile</strong> — {orgVenue.name}. Ticketed
+                  <strong className="font-medium">Use my venue profile</strong> - {orgVenue.name}. Ticketed
                   events will appear on your venue page and on Shows.
                 </span>
               </label>

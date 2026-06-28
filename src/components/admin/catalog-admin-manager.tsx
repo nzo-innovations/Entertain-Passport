@@ -149,7 +149,7 @@ export function CatalogAdminManager({
                 {rows.map((c) => (
                   <tr key={c.id}>
                     <td className="px-4 py-3 font-medium">{c.parentId ? `↳ ${c.name}` : c.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.parentName ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.parentName ?? "-"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{c.slug}</td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {c.eventCount + c.venueCount}

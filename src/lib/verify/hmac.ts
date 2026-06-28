@@ -1,5 +1,5 @@
 // ============================================================
-// Partner request HMAC signing (over TLS) — auth scheme "EP-HMAC"
+// Partner request HMAC signing (over TLS) - auth scheme "EP-HMAC"
 // ============================================================
 // Authorization: EP-HMAC keyId="pk_live_..", ts="<unix>", nonce="<rand>", sig="<hex>"
 //

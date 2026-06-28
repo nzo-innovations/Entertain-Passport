@@ -61,7 +61,7 @@ export async function getVerifyDashboard() {
     verdictBreakdown: verdictGroups.map((g) => ({ verdict: g.verdict, count: g._count._all })),
     recentLogs: recentLogs.map((l) => ({
       id: l.id,
-      partner: l.partner?.name ?? "—",
+      partner: l.partner?.name ?? "-",
       verdict: l.verdict,
       httpStatus: l.httpStatus,
       latencyMs: l.latencyMs,

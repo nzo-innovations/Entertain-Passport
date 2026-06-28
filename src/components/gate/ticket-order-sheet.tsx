@@ -16,7 +16,15 @@ import { cn } from "@/lib/utils";
 export type OrderGroup = {
   orderId: string;
   purchasedAt: string;
-  buyer: { id: string; name: string | null; email: string; phone: string | null };
+  buyer: {
+    id: string;
+    name: string | null;
+    email: string;
+    phone: string | null;
+    nic?: string | null;
+    idType?: string | null;
+    idNumber?: string | null;
+  };
   packageName: string;
   ticketCount: number;
   tickets: {
@@ -25,7 +33,7 @@ export type OrderGroup = {
     label: string;
     kind: HolderKind;
     status: string;
-    code: string;
+    identity: string;
     passportNo: string | null;
     checkedInAt: string | null;
     isHighlighted?: boolean;
@@ -64,7 +72,7 @@ export function TicketOrderSheet({
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Ticket buyer
               </p>
-              <p className="mt-2 font-semibold">{group.buyer.name ?? "—"}</p>
+              <p className="mt-2 font-semibold">{group.buyer.name ?? "-"}</p>
               <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2">
                   <Mail className="h-3.5 w-3.5" /> {group.buyer.email}
@@ -103,7 +111,7 @@ export function TicketOrderSheet({
                           <span className="truncate">{t.label}</span>
                         </p>
                         <p className="mt-1 font-mono text-xs text-muted-foreground">
-                          {t.passportNo ?? t.code}
+                          {t.identity}
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">

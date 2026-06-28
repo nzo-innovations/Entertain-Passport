@@ -11,7 +11,7 @@ import { bindBrowserSession } from "@/lib/session-client";
 export function AuthCompleteClient() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") ?? "/";
+  const next = params.get("next") ?? "/?verified=1";
 
   React.useEffect(() => {
     async function finish() {

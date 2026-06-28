@@ -25,7 +25,7 @@ export function describeTicketHolder(
     return { label: ticket.holderName.trim(), kind: "guest" };
   }
   if (ticket.holderNic?.trim()) {
-    return { label: `Guest · NIC ${ticket.holderNic.trim()}`, kind: "guest" };
+    return { label: `Guest · ID ${ticket.holderNic.trim()}`, kind: "guest" };
   }
   // Bulk order: extra tickets still default-linked to buyer = not assigned yet.
   if (total > 1 && index > 0 && ticket.holderUserId === buyer.id) {

@@ -11,7 +11,7 @@ type Row = {
   id: string;
   holder: string;
   packageName: string;
-  code: string;
+  identity: string;
   passportNo: string | null;
   checkedInAt: string | null;
 };
@@ -83,7 +83,7 @@ export function CheckInManager({ eventId }: { eventId: string }) {
             setQ(e.target.value);
             void load(e.target.value);
           }}
-          placeholder="Search by name, code or passport"
+          placeholder="Search by NIC, passport or card"
           className="h-9"
         />
       </div>
@@ -94,8 +94,8 @@ export function CheckInManager({ eventId }: { eventId: string }) {
             <div className="min-w-0">
               <p className="truncate font-medium">{r.holder}</p>
               <p className="font-mono text-xs text-muted-foreground">
-                {r.passportNo ?? r.code} · {r.packageName}
-                {r.checkedInAt ? ` · ${new Date(r.checkedInAt).toLocaleTimeString()}` : ""}
+                {r.identity} - {r.packageName}
+                {r.checkedInAt ? ` - ${new Date(r.checkedInAt).toLocaleTimeString()}` : ""}
               </p>
             </div>
             <Button

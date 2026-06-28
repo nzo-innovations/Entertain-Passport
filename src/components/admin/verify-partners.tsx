@@ -431,7 +431,7 @@ function SecretDialog({ secret, onClose }: { secret: { keyId: string; secret: st
       {secret && (
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Signing secret — shown once</DialogTitle>
+            <DialogTitle>Signing secret - shown once</DialogTitle>
             <DialogDescription>
               Copy and share this securely with the partner. It cannot be retrieved again; if lost,
               rotate the key to issue a new one.

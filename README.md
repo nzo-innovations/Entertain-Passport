@@ -1,6 +1,6 @@
 # Entertain Passport
 
-A modern, low-cost ticketing platform by nZO Innovations. Your passport to every event - buy tickets and tap your NFC/RFID Entertain Passport at the gate.
+A modern, low-cost ticketing platform by nZO Innovations. Your passport to every event - buy tickets and tap your NFC Entertain Passport at the gate.
 
 ## Stack
 

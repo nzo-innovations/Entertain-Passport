@@ -1,4 +1,4 @@
-# nZO Ticketing — Supabase Backend
+# nZO Ticketing - Supabase Backend
 
 This document describes the **live Supabase backend** (database, auth, storage),
 how the app connects to it, and the system flow.
@@ -15,7 +15,7 @@ how the app connects to it, and the system flow.
 | DB host (pooler) | `aws-1-ap-south-1.pooler.supabase.com` (region: Mumbai) |
 | DB name / user | `postgres` / `postgres.fxoyitlauwbcdcwqrwge` |
 
-The publishable/anon key is **safe to expose** in the browser — every table has
+The publishable/anon key is **safe to expose** in the browser - every table has
 RLS enabled with no public policies, so the key can't read or write app data.
 
 ### Environment variables (`.env`)
@@ -38,6 +38,31 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY="sb_publishable_opEA2waGNKRPkMIHdtzPzg_Vdyb9INj"
 For Vercel: add the same four variables under **Project → Settings →
 Environment Variables**.
 
+### Verification plane (isolated Supabase project)
+
+Separate project for the B2B card-validation API (`VERIFY_*` env vars). **Same
+region as core** (Mumbai) to avoid cross-region sync latency.
+
+| Item | Value |
+|------|-------|
+| Project ref | `vzvxphcdcmahwwgadrlp` |
+| API URL | `https://vzvxphcdcmahwwgadrlp.supabase.co` |
+| DB host (pooler) | `aws-1-ap-south-1.pooler.supabase.com` (region: Mumbai) |
+| DB user | `postgres.vzvxphcdcmahwwgadrlp` |
+
+```bash
+# Runtime (PgBouncer pooler, port 6543)
+VERIFY_DATABASE_URL="postgresql://postgres.vzvxphcdcmahwwgadrlp:[VERIFY-DB-PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10&pool_timeout=20&sslmode=require"
+# Migrations (direct/session, port 5432)
+VERIFY_DIRECT_URL="postgresql://postgres.vzvxphcdcmahwwgadrlp:[VERIFY-DB-PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require"
+```
+
+Provision schema: `npm run verify:guard && npm run db:push:verify && npm run db:seed:verify`.
+See `docs/VERIFICATION_RUNBOOK.md`.
+
+For Vercel production: add `VERIFY_DATABASE_URL`, `VERIFY_DIRECT_URL`, and all
+`VERIFY_KMS_*` / `VERIFY_HASH_PEPPER` variables from `.env.example`.
+
 ---
 
 ## 2. Data access architecture
@@ -53,11 +78,11 @@ Next.js ──┼─ Prisma (postgres role) ────────────
   `@supabase/ssr` clients (`src/lib/supabase/*`). Sessions live in cookies and are
   refreshed by `src/middleware.ts`.
 - **Data** is read/written with **Prisma** through the pooled connection. Prisma
-  connects as the `postgres` role, which **bypasses RLS** — so all existing query
+  connects as the `postgres` role, which **bypasses RLS** - so all existing query
   code keeps working unchanged.
 - **RLS** is enabled on every table with **no public policy**, locking the
   publishable key out of direct table access. (Security advisor shows these as
-  INFO "RLS enabled, no policy" — that is intentional.)
+  INFO "RLS enabled, no policy" - that is intentional.)
 
 ---
 
@@ -77,18 +102,22 @@ schema). 22 tables in total:
 
 Key relationships:
 
-- `User 1—* Organization (owner)`, `User *—* Organization (OrganizationMember)`
-- `Organization 1—* Event`, `Event 1—* TicketPackage / EventImage / EventStaff`
-- `Event 1—* EventApprovalLog` (approval audit trail)
-- `Order 1—* OrderItem 1—* Ticket` (each `Ticket` has a unique `barcode` + `qrCode`)
+- `User 1-* Organization (owner)`, `User *-* Organization (OrganizationMember)`
+- `Organization 1-* Event`, `Event 1-* TicketPackage / EventImage / EventStaff`
+- `Event 1-* EventApprovalLog` (approval audit trail)
+- `Order 1-* OrderItem 1-* Ticket` (tickets keep legacy internal codes, but gate lookup uses NIC, passport number or Entertain Passport NFC)
 
 ### `User` ↔ `auth.users` sync
 
 `public.User.id` equals `auth.users.id`. A trigger keeps them in sync:
 
-- `on_auth_user_created` → inserts a `User` profile on signup (role from signup
-  metadata, default `CUSTOMER`).
-- `on_auth_user_updated` → keeps email/role in sync.
+- `on_auth_user_created` → inserts a `User` profile on signup. It copies
+  `firstName`, `lastName`, combined `name`, `role`, `idType`, and `idNumber`
+  from `raw_user_meta_data` (default role `CUSTOMER`, default `idType = NIC`).
+  `idNumber` is the canonical customer identity number for either `NIC` or
+  `PASSPORT`; `nic` is kept as a legacy mirror only when `idType = NIC`.
+- `on_auth_user_updated` → keeps email, role and customer identity metadata in
+  sync.
 
 ---
 
@@ -106,32 +135,33 @@ Bucket **`event-images`** (public, 10 MB limit, image mime types only).
 
 | Version | Name |
 |---------|------|
-| `…094951` | `init_nzo_ticketing_schema` — all 22 tables, FKs, indexes |
-| `…095021` | `auth_user_sync_and_rls` — auth triggers + RLS on all tables |
-| `…095037` | `storage_event_images_bucket` — storage bucket + policies |
-| `…095201` | `seed_auth_users` — 6 auth users + profiles + platform settings |
-| `…095227` | `seed_catalog_orgs` — categories, venues, organizations, members |
-| `…095318` | `seed_events` — 8 events, images, packages, approval logs |
-| `…095400` | `seed_staff_orders_tickets` — event staff + 1 paid order + 2 tickets |
-| `…095437` | `security_hardening` — locked trigger fns + tightened storage policy |
+| `…094951` | `init_nzo_ticketing_schema` - all 22 tables, FKs, indexes |
+| `…095021` | `auth_user_sync_and_rls` - auth triggers + RLS on all tables |
+| `…095037` | `storage_event_images_bucket` - storage bucket + policies |
+| `…095201` | `seed_auth_users` - 6 auth users + profiles + platform settings |
+| `…095227` | `seed_catalog_orgs` - categories, venues, organizations, members |
+| `…095318` | `seed_events` - 8 events, images, packages, approval logs |
+| `…095400` | `seed_staff_orders_tickets` - event staff + 1 paid order + 2 tickets |
+| `…095437` | `security_hardening` - locked trigger fns + tightened storage policy |
 | `profile_currency_commission_location` | User profile fields, structured address, org/event commission, `Event.currency`, LKR + 5% backfill |
+| `scripts/update-auth-user-sync-nic.sql` | Auth trigger update for customer `firstName`, `lastName`, `idType`, `idNumber` identity metadata |
 
 ---
 
 ## 6. Example accounts
 
 All seeded accounts share the password **`Password123!`**. These are now
-**real example accounts** (no demo quick-fill buttons on the login page) — sign
+**real example accounts** (no demo quick-fill buttons on the login page) - sign
 in by entering the email/password manually. Look them up in the DB as needed.
 
 | Email | Role | Creator type (Organization.type) | Lands on |
 |-------|------|----------------------------------|----------|
-| `superadmin@nzo.test` | SUPER_ADMIN | — | `/admin` (sign in via `/third-eye/999/login`) |
+| `superadmin@nzo.test` | SUPER_ADMIN | - | `/admin` (sign in via `/third-eye/999/login`) |
 | `promoter@beatpulse.test` | ORGANIZER | ORGANIZER (Event Organizer) | `/portal` |
 | `artist@mayaray.test` | ORGANIZER | ARTIST_MANAGER (Artist Manager) | `/portal` |
 | `venue@lumina.test` | ORGANIZER | BUSINESS_OWNER (Company/Venue Owner) | `/portal` |
 | `scanner@door.test` | ORGANIZER | member (WORKER) + EventStaff SCANNER | `/portal` |
-| `demo@customer.test` | CUSTOMER | — | `/account/tickets` |
+| `demo@customer.test` | CUSTOMER | - | `/account/tickets` |
 
 ### Auth doors
 
@@ -155,9 +185,10 @@ in by entering the email/password manually. Look them up in the DB as needed.
 
 ### Profile & loyalty
 
-- `User` gained `gender`, `birthday`, `idType` (NIC/PASSPORT), `idNumber`.
+- `User` gained `firstName`, `lastName`, primary unique `idNumber` for NIC or
+  passport identity (`idType` defaults to `NIC`), plus optional `gender` and `birthday`.
   `Address` gained `district`, `province`, `isPrimary`. A complete profile
-  unlocks loyalty rewards (`src/lib/profile.ts`).
+  unlocks loyalty rewards and card delivery (`src/lib/profile.ts`).
 
 ### Payments
 
@@ -240,11 +271,11 @@ flowchart LR
     C -- yes --> D[POST /api/checkout]
     D --> E[createPaidOrder transaction]
     E --> F[Order = PAID]
-    E --> G[Issue Tickets w/ unique barcode + QR]
+    E --> G[Issue tickets linked to NIC/passport identity or Entertain Passport]
     E --> H[Decrement package availability + award loyalty]
     G --> I[My Tickets page]
-    I --> J[Door staff scans barcode]
-    J --> K[POST /api/tickets/check-in → status CHECKED_IN]
+    I --> J[Door staff verifies NIC/passport number or taps Passport card]
+    J --> K[POST /api/gate/check-in -> status CHECKED_IN]
 ```
 
 > Payment is currently mocked (order is created as PAID immediately). When

@@ -30,7 +30,7 @@ export type CreateEventInput = {
   existingVenueId?: string;
   images?: string[];
   primaryIndex?: number;
-  packages: Array<{ name: string; price: number; qtyTotal: number; perks?: string }>;
+  packages: Array<{ name: string; price: number; qtyTotal: number; perks?: string; ticketKind?: string }>;
   tagIds?: string[];
 };
 
@@ -173,6 +173,8 @@ export async function createEventForUser(user: SessionUser, input: CreateEventIn
         name: p.name.trim(),
         price: toMinor(p.price, currency),
         qtyTotal: Math.round(p.qtyTotal),
+        ticketKind:
+          p.ticketKind === "SEATED" || p.ticketKind === "STANDING" ? p.ticketKind : "GENERAL",
         perksJson: p.perks
           ? JSON.stringify(
               p.perks

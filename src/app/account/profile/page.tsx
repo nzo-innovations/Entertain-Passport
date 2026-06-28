@@ -4,18 +4,28 @@ import { CheckCircle2, PartyPopper, Sparkles } from "lucide-react";
 import { Header } from "@/components/shared/header";
 import { Footer } from "@/components/shared/footer";
 import { ProfileForm, type ProfileFormData } from "@/components/account/profile-form";
+import { PassportWalletPanel } from "@/components/account/passport-wallet-panel";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { profileIsComplete, missingProfileFields } from "@/lib/profile";
+import { getWalletCredentialStatus } from "@/lib/passport/wallet-credential-service";
+import { profileIdentity, profileIsComplete, missingProfileFields } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "My profile" };
 
+function splitName(name: string | null) {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
 export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams?: { welcome?: string };
+  searchParams?: { welcome?: string; next?: string };
 }) {
   const session = await getSession();
   if (!session) redirect("/login?next=/account/profile");
@@ -27,14 +37,17 @@ export default async function ProfilePage({
   if (!user) redirect("/login");
 
   const addr = user.addresses[0];
+  const split = splitName(user.name);
+  const identity = profileIdentity(user);
   const initial: ProfileFormData = {
-    name: user.name ?? "",
+    firstName: user.firstName ?? split.firstName,
+    lastName: user.lastName ?? split.lastName,
     email: user.email,
+    idType: identity?.type ?? "NIC",
+    idNumber: identity?.number ?? "",
     phone: user.phone ?? "",
     gender: user.gender ?? "",
     birthday: user.birthday ? new Date(user.birthday).toISOString().slice(0, 10) : "",
-    idType: user.idType ?? "",
-    idNumber: user.idNumber ?? "",
     address: {
       line1: addr?.line1 ?? "",
       line2: addr?.line2 ?? "",
@@ -49,18 +62,31 @@ export default async function ProfilePage({
   const complete = profileIsComplete({ ...user, addresses: user.addresses });
   const missing = missingProfileFields({ ...user, addresses: user.addresses });
   const welcome = searchParams?.welcome === "1";
+  const returnToCheckout = searchParams?.next === "/checkout";
+  const walletStatus = await getWalletCredentialStatus(session.id);
 
   return (
     <>
       <Header />
       <main className="container max-w-3xl py-12">
+        {returnToCheckout && !complete && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-4">
+            <Sparkles className="mt-0.5 h-5 w-5 text-primary" />
+            <div>
+              <p className="font-medium">Complete your profile to buy tickets</p>
+              <p className="text-sm text-muted-foreground">
+                Add your mobile, gender and address, then you&apos;ll return to checkout.
+              </p>
+            </div>
+          </div>
+        )}
         {welcome && (
           <div className="mb-6 flex items-start gap-3 rounded-2xl border border-primary/30 bg-primary/10 p-4">
             <PartyPopper className="mt-0.5 h-5 w-5 text-primary" />
             <div>
               <p className="font-medium">Welcome to Entertain Passport!</p>
               <p className="text-sm text-muted-foreground">
-                Complete your profile to unlock loyalty rewards - or skip and do it later.
+                Add your mobile, gender and address to unlock loyalty rewards and card delivery.
               </p>
             </div>
           </div>
@@ -70,13 +96,37 @@ export default async function ProfilePage({
           <div>
             <h1 className="font-display text-3xl font-bold">My profile</h1>
             <p className="text-sm text-muted-foreground">
-              Manage your personal info. You can update this anytime.
+              Manage your identity, contact details and card delivery address.
             </p>
           </div>
           <Link href="/account/tickets" className="text-sm font-medium text-primary hover:underline">
             My tickets
           </Link>
         </div>
+
+        <div className="mt-6 rounded-2xl border bg-card p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Loyalty points
+          </p>
+          <p className="mt-1 font-display text-3xl font-bold tabular-nums">
+            {user.loyaltyPoints.toLocaleString()}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Points appear here after eligible orders and member offers.
+          </p>
+        </div>
+
+        {walletStatus.hasPassport && (
+          <div className="mt-6">
+            <PassportWalletPanel
+              formattedPassportNumber={walletStatus.formattedPassportNumber}
+              holderName={walletStatus.holderName}
+              passportStatus={walletStatus.passportStatus}
+              googleConfigured={walletStatus.googleWallet.configured}
+              googleProvisioned={walletStatus.googleWallet.provisioned}
+            />
+          </div>
+        )}
 
         <div
           className={`mt-6 flex items-start gap-3 rounded-2xl border p-4 ${

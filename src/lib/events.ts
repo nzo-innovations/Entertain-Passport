@@ -23,7 +23,7 @@ export type EventCardFilter = {
   limit?: number;
 };
 
-/** Lean card query — only fields needed for listing UI. */
+/** Lean card query - only fields needed for listing UI. */
 async function fetchEventCards(filter?: EventCardFilter): Promise<EventCardData[]> {
   const events = await db.event.findMany({
     where: {
@@ -219,6 +219,7 @@ async function fetchEventBySlug(slug: string, includeUnpublished: boolean) {
       organization: { select: { id: true, name: true, slug: true } },
       packages: { orderBy: { sortOrder: "asc" } },
       partners: true,
+      eventSeatMap: { select: { seatingEnabled: true, published: true, layoutJson: true } },
     },
   });
   if (!event) return null;

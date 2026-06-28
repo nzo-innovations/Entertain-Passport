@@ -35,7 +35,7 @@ export default async function PortalVenuePage() {
       <div>
         <h1 className="font-display text-2xl font-bold sm:text-3xl">My venue</h1>
         <p className="mt-1 text-muted-foreground">
-          Publish your pub, club or restaurant — weekly live music plus ticketed special nights from the
+          Publish your pub, club or restaurant - weekly live music plus ticketed special nights from the
           same organizer account.
         </p>
       </div>

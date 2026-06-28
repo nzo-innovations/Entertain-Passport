@@ -38,7 +38,7 @@ export function VenueProgramSchedule({ programs }: { programs: ProgramRow[] }) {
         <section>
           <h3 className="font-display text-lg font-semibold">Weekly nights</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live music &amp; DJ nights — walk in, no ticket required unless noted.
+            Live music &amp; DJ nights - walk in, no ticket required unless noted.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {weekly.map((p) => (

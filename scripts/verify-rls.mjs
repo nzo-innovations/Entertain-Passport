@@ -4,7 +4,7 @@
 // privileged Postgres role (VERIFY_DATABASE_URL), which is the table OWNER and
 // therefore BYPASSES RLS. Enabling RLS with NO policies blocks the project's
 // public `anon` / `authenticated` roles (Supabase client libraries / PostgREST)
-// from reading or writing these tables directly — defense in depth for hashed
+// from reading or writing these tables directly - defense in depth for hashed
 // identities, KMS-wrapped keys, partner secrets and audit logs.
 //
 // Idempotent and safe to re-run. Wired into `db:push:verify` so provisioning a
@@ -48,10 +48,10 @@ try {
   const off = rows.filter((r) => !r.rls).map((r) => r.t);
   for (const r of rows) console.log(`  ${r.rls ? "secured " : "OPEN    "} public.${r.t}`);
   if (off.length) {
-    console.error(`[verify-rls] FAILED — RLS still off on: ${off.join(", ")}`);
+    console.error(`[verify-rls] FAILED - RLS still off on: ${off.join(", ")}`);
     process.exit(1);
   }
-  console.log(`[verify-rls] OK — RLS enabled on all ${rows.length} verification tables.`);
+  console.log(`[verify-rls] OK - RLS enabled on all ${rows.length} verification tables.`);
 } finally {
   await prisma.$disconnect().catch(() => {});
 }

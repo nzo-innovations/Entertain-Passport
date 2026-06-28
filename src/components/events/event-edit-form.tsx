@@ -10,6 +10,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { getCurrency } from "@/lib/money";
 import { SRI_LANKA_PROVINCE_NAMES, getDistricts, ENABLED_COUNTRIES } from "@/lib/locations";
 import { EventStatus } from "@/lib/types";
+import type { TicketKind } from "@/lib/seating/types";
+import { TICKET_KIND_LABELS } from "@/lib/seating/package-sync";
 
 type PkgRow = {
   id?: string;
@@ -17,6 +19,7 @@ type PkgRow = {
   price: number; // major units
   qtyTotal: number;
   qtySold: number;
+  ticketKind: TicketKind;
   perks: string;
 };
 
@@ -87,7 +90,13 @@ export function EventEditForm({
   const setPkg = (i: number, k: keyof PkgRow, val: string | number) =>
     setV((s) => ({ ...s, packages: s.packages.map((p, idx) => (idx === i ? { ...p, [k]: val } : p)) }));
   const addPkg = () =>
-    setV((s) => ({ ...s, packages: [...s.packages, { name: "", price: 0, qtyTotal: 100, qtySold: 0, perks: "" }] }));
+    setV((s) => ({
+      ...s,
+      packages: [
+        ...s.packages,
+        { name: "", price: 0, qtyTotal: 100, qtySold: 0, ticketKind: "GENERAL", perks: "" },
+      ],
+    }));
   const removePkg = (i: number) =>
     setV((s) => ({ ...s, packages: s.packages.filter((_, idx) => idx !== i) }));
 
@@ -127,6 +136,7 @@ export function EventEditForm({
             name: p.name,
             price: Number(p.price),
             qtyTotal: Number(p.qtyTotal),
+            ticketKind: p.ticketKind,
             perks: p.perks,
           })),
           images: v.images,
@@ -309,7 +319,12 @@ export function EventEditForm({
 
       <section className="rounded-2xl border bg-card p-5">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold">Ticket packages ({cur.code})</h2>
+          <div>
+            <h2 className="font-display text-lg font-semibold">Ticket packages ({cur.code})</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Set up categories and quantities here first, then map them to seats on the Seating page.
+            </p>
+          </div>
           <Button variant="outline" size="sm" onClick={addPkg}>
             <Plus className="h-4 w-4" /> Add
           </Button>
@@ -317,10 +332,24 @@ export function EventEditForm({
         <ul className="mt-4 space-y-3">
           {v.packages.map((p, i) => (
             <li key={p.id ?? `new-${i}`} className="rounded-xl border bg-background/40 p-4">
-              <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr_auto]">
+              <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr_1fr_auto]">
                 <div>
                   <Label>Name</Label>
                   <Input value={p.name} onChange={(e) => setPkg(i, "name", e.target.value)} />
+                </div>
+                <div>
+                  <Label>Type</Label>
+                  <select
+                    value={p.ticketKind}
+                    onChange={(e) => setPkg(i, "ticketKind", e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {(Object.keys(TICKET_KIND_LABELS) as TicketKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {TICKET_KIND_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label>Price ({cur.code})</Label>

@@ -21,7 +21,7 @@ export type TapOutcome = {
   verdict: Verdict;
   status: string | null; // validation status surfaced to partner (ACTIVE/BLOCKED/...)
   billable: boolean; // definitive answer about a real, known card
-  passportNo?: string | null; // internal — for usage metering, never returned to partners
+  passportNo?: string | null; // internal - for usage metering, never returned to partners
   reason?: string;
 };
 

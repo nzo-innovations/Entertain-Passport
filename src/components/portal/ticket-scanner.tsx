@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, ScanLine, XCircle } from "lucide-react";
+import { CheckCircle2, Nfc, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -15,13 +15,13 @@ export function TicketScanner({ eventId, eventTitle }: { eventId: string; eventT
   } | null>(null);
   const [loading, setLoading] = React.useState(false);
 
-  const scan = async (barcode: string) => {
+  const scan = async (identity: string) => {
     setLoading(true);
     setResult(null);
-    const res = await fetch("/api/tickets/check-in", {
+    const res = await fetch("/api/gate/check-in", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ barcode, eventId }),
+      body: JSON.stringify({ code: identity, eventId }),
     });
     const data = await res.json();
     setLoading(false);
@@ -30,13 +30,13 @@ export function TicketScanner({ eventId, eventTitle }: { eventId: string; eventT
       setResult({
         ok: true,
         message: "Entry granted",
-        detail: `${data.ticket?.holderName} · ${data.ticket?.packageName} · ${data.ticket?.barcode}`,
+        detail: `${data.ticket?.holder ?? "Guest"} - ${data.ticket?.packageName ?? "Ticket"}`,
       });
     } else {
       setResult({
         ok: false,
         message: data.message ?? data.error ?? "Invalid ticket",
-        detail: data.ticket?.barcode,
+        detail: data.ticket?.identity,
       });
     }
     setCode("");
@@ -45,20 +45,20 @@ export function TicketScanner({ eventId, eventTitle }: { eventId: string; eventT
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <div className="text-center">
-        <ScanLine className="mx-auto h-12 w-12 text-primary" />
-        <h2 className="mt-3 font-display text-2xl font-bold">Ticket scanner</h2>
+        <Nfc className="mx-auto h-12 w-12 text-primary" />
+        <h2 className="mt-3 font-display text-2xl font-bold">Gate check-in</h2>
         <p className="text-sm text-muted-foreground">{eventTitle}</p>
       </div>
 
       <div className="rounded-2xl border bg-card p-6">
         <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Scan or enter barcode
+          Tap card or enter NIC / passport number
         </label>
         <div className="mt-2 flex gap-2">
           <Input
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="NZO-XXXX-XXXX-XXXX"
+            placeholder="NIC, passport number, NFC UID or EP-number"
             className="font-mono text-lg tracking-wider"
             onKeyDown={(e) => e.key === "Enter" && code && scan(code)}
             autoFocus
@@ -67,9 +67,6 @@ export function TicketScanner({ eventId, eventTitle }: { eventId: string; eventT
             Check in
           </Button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Demo: use barcode from customer ticket (account/tickets) or seed output.
-        </p>
       </div>
 
       {result && (

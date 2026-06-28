@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/lib/cart-store";
-import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency, cn } from "@/lib/utils";
 import { formatEventDate } from "@/lib/format";
 
@@ -28,11 +27,18 @@ type Event = {
   primaryImage: string;
 };
 
-export function PackageSelector({ event, packages }: { event: Event; packages: Pkg[] }) {
+export function PackageSelector({
+  event,
+  packages,
+  hideTitle,
+}: {
+  event: Event;
+  packages: Pkg[];
+  hideTitle?: boolean;
+}) {
   const [qty, setQty] = React.useState<Record<string, number>>({});
   const addLine = useCart((s) => s.addLine);
   const openCart = useCart((s) => s.openCart);
-  const { toast } = useToast();
 
   const setQtyFor = (id: string, n: number) => setQty((q) => ({ ...q, [id]: Math.max(0, n) }));
 
@@ -61,22 +67,20 @@ export function PackageSelector({ event, packages }: { event: Event; packages: P
     }
     if (added > 0) {
       setQty({});
-      toast({
-        title: "Added to cart",
-        description: `${added} ticket${added === 1 ? "" : "s"} added \u00b7 you can keep adding more packages.`,
-      });
       openCart();
     }
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-display text-xl font-semibold">Choose your tickets</h2>
-        <p className="text-xs text-muted-foreground">
-          Add as many packages as you like - they all go into one cart.
-        </p>
-      </div>
+      {!hideTitle && (
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-display text-xl font-semibold">Choose your tickets</h2>
+          <p className="text-xs text-muted-foreground">
+            Add as many packages as you like - they all go into one cart.
+          </p>
+        </div>
+      )}
 
       <ul className="space-y-3">
         {packages.map((p) => {
@@ -137,7 +141,7 @@ export function PackageSelector({ event, packages }: { event: Event; packages: P
                       variant="ghost"
                       size="icon"
                       className="h-9 w-9"
-                      disabled={soldOut || n >= 10}
+                      disabled={soldOut || n >= remaining}
                       onClick={() => setQtyFor(p.id, n + 1)}
                     >
                       <Plus className="h-3.5 w-3.5" />

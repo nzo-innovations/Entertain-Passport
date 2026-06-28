@@ -1,4 +1,4 @@
-# Entertain Passport — Performance & Scale Guide
+# Entertain Passport - Performance & Scale Guide
 
 Target: **100 concurrent users**, **10k registered users**, **100 events** without noticeable slowdown on login, event browsing, and checkout.
 
@@ -8,7 +8,7 @@ Target: **100 concurrent users**, **10k registered users**, **100 events** witho
 
 | Layer | Optimization |
 |-------|----------------|
-| **Database indexes** | Events (status+approval+date), packages, orders, venues, RFID lookup |
+| **Database indexes** | Events (status+approval+date), packages, orders, venues, NFC passport lookup |
 | **Public page cache** | `revalidate: 60` + `unstable_cache` for events, categories, venues |
 | **Middleware** | Skips Supabase auth refresh for anonymous visitors |
 | **Auth** | React `cache()` dedupes Supabase + DB per request; login role check fetches only `role` column |
@@ -21,7 +21,7 @@ Target: **100 concurrent users**, **10k registered users**, **100 events** witho
 
 ## Production deployment checklist
 
-### 1. Host on Vercel (or similar) — not `npm run dev`
+### 1. Host on Vercel (or similar) - not `npm run dev`
 
 ```bash
 npm run build
@@ -33,7 +33,8 @@ Dev mode compiles on every change and is **10–20× slower** than production.
 ### 2. Supabase Pro + compute
 
 - Avoid free-tier **project pause** (adds seconds to first request)
-- Mumbai region matches your DB — deploy app to `ap-south-1` if possible
+- Mumbai region matches your DB - deploy app to `ap-south-1` if possible
+- Core and **Verify** Supabase projects both use `ap-south-1` (`fxoyitlauwbcdcwqrwge` + `vzvxphcdcmahwwgadrlp`)
 - Use **Transaction pooler** (port 6543) with `pgbouncer=true`
 
 **Production `.env` (Vercel):**
@@ -42,7 +43,7 @@ Dev mode compiles on every change and is **10–20× slower** than production.
 DATABASE_URL="postgresql://...:6543/postgres?pgbouncer=true&connection_limit=1"
 ```
 
-Use `connection_limit=1` **per serverless function** — Vercel scales instances, each gets its own connection.
+Use `connection_limit=1` **per serverless function** - Vercel scales instances, each gets its own connection.
 
 ### 3. Environment variables on Vercel
 
@@ -71,7 +72,7 @@ After bulk data changes, redeploy or call revalidation from admin tooling.
 
 ## Checkout under load
 
-- Inventory uses **conditional `updateMany`** — two users cannot buy the last ticket
+- Inventory uses **conditional `updateMany`** - two users cannot buy the last ticket
 - Tickets created with **`createMany`** (batch insert)
 - Payment gateway (WebXPay): keep order as `PENDING` until callback confirms, then issue tickets (future hardening)
 

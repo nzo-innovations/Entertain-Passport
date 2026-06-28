@@ -3,6 +3,7 @@ import { toMinor, getCurrency, type CurrencyCode } from "./money";
 import { UserRole, ApprovalStatus, EventStatus } from "./types";
 import type { SessionUser } from "./auth";
 import { assertPhysicalReady } from "./physical-tickets";
+import { parseTicketKind } from "./seating/package-sync";
 
 export class EventUpdateError extends Error {}
 
@@ -32,7 +33,7 @@ type EventWithRelations = {
     country: string;
     mapUrl: string | null;
   };
-  packages: Array<{ id: string; name: string; price: number; qtyTotal: number; qtySold: number; perksJson: string | null }>;
+  packages: Array<{ id: string; name: string; price: number; qtyTotal: number; qtySold: number; perksJson: string | null; ticketKind: string }>;
   images: Array<{ id: string; url: string; sortOrder: number }>;
 };
 
@@ -74,6 +75,7 @@ export function eventToEditInitial(event: EventWithRelations) {
       price: p.price / minorPer,
       qtyTotal: p.qtyTotal,
       qtySold: p.qtySold,
+      ticketKind: parseTicketKind(p.ticketKind),
       perks: (() => {
         try {
           return p.perksJson ? (JSON.parse(p.perksJson) as string[]).join(", ") : "";
@@ -113,6 +115,7 @@ export type UpdateEventInput = {
     price: number; // major units
     qtyTotal: number;
     perks?: string;
+    ticketKind?: string;
   }>;
   images?: string[];
   primaryIndex?: number;
@@ -171,7 +174,7 @@ export async function updateEventForUser(user: SessionUser, eventId: string, inp
         const existingMajor = existing.price / minorPerExisting;
         if (Number(incoming.price) !== existingMajor) {
           throw new EventUpdateError(
-            `"${existing.name}" is already live — its price can't be changed. Add a new ticket category for the new price instead.`
+            `"${existing.name}" is already live - its price can't be changed. Add a new ticket category for the new price instead.`
           );
         }
       }
@@ -243,6 +246,8 @@ export async function updateEventForUser(user: SessionUser, eventId: string, inp
             name: p.name.trim(),
             price: toMinor(p.price, currency),
             qtyTotal: Math.round(p.qtyTotal),
+            ticketKind:
+              p.ticketKind === "SEATED" || p.ticketKind === "STANDING" ? p.ticketKind : "GENERAL",
             perksJson,
             sortOrder: i,
           },
@@ -254,6 +259,8 @@ export async function updateEventForUser(user: SessionUser, eventId: string, inp
             name: p.name.trim(),
             price: toMinor(p.price, currency),
             qtyTotal: Math.round(p.qtyTotal),
+            ticketKind:
+              p.ticketKind === "SEATED" || p.ticketKind === "STANDING" ? p.ticketKind : "GENERAL",
             perksJson,
             sortOrder: i,
           },

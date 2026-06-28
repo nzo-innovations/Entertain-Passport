@@ -31,7 +31,7 @@ pnpm-debug.log*
 .env
 .env*.local
 
-# Cursor MCP (contains tokens — use mcp.json.example as template)
+# Cursor MCP (contains tokens - use mcp.json.example as template)
 .cursor
 .cursor/mcp.json
 

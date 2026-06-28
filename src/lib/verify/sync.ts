@@ -1,7 +1,7 @@
 // ============================================================
 // One-way sync: CORE app  ->  VERIFICATION plane (write-only)
 // ============================================================
-// Called from the trusted core app (e.g. the Super-Admin RFID routes). It
+// Called from the trusted core app (e.g. the Super-Admin NFC routes). It
 // projects ONLY minimal, hashed identity into the isolated verification DB.
 // There is no path back: the verification plane never reads core sales data.
 import { verifyDb } from "@/lib/verify-db";

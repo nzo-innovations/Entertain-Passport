@@ -9,7 +9,7 @@ export const UserRole = {
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
-/** Creator lanes — each signup option maps to its own User.role (and Organization.type). */
+/** Creator lanes - each signup option maps to its own User.role (and Organization.type). */
 export type CreatorRole =
   | typeof UserRole.ORGANIZER
   | typeof UserRole.ARTIST_MANAGER

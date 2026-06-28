@@ -30,7 +30,7 @@ export async function GET(req: Request) {
       holder: ticket?.label ?? "Guest",
       kind: ticket?.kind,
       status: ticket?.status,
-      code: ticket?.code,
+      identity: ticket?.identity,
       passportNo: ticket?.passportNo,
       packageName: group.packageName,
       checkedInAt: ticket?.checkedInAt ?? null,

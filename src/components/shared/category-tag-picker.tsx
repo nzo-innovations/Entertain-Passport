@@ -100,7 +100,7 @@ export function CategoryTagPicker({
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium">
             {subLabel}
-            {!hasSubs && !loadingSubs ? " (optional — none yet for this main category)" : ""}
+            {!hasSubs && !loadingSubs ? " (optional - none yet for this main category)" : ""}
           </span>
           {loadingSubs ? (
             <p className="text-xs text-muted-foreground">Loading subcategories…</p>

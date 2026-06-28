@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Mail } from "lucide-react";
+import { Mail, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Logo } from "@/components/shared/logo";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { CREATOR_TYPES, PLACES_LABEL, ROUTES } from "@/lib/config";
 import { bindBrowserSession, clearBrowserSession } from "@/lib/session-client";
+import { RESIDENCY_OPTIONS, validateIdentity, type IdentityType } from "@/lib/identity";
 import { CREATOR_ROLES, UserRole, isPortalRole, OrgType } from "@/lib/types";
 import {
   CategoryTagPicker,
@@ -21,7 +22,7 @@ function destinationFor(role: string | null | undefined) {
   if (role === UserRole.SUPER_ADMIN) return "/admin";
   if (isPortalRole(role)) return "/portal";
   if (role === UserRole.GATE_STAFF) return ROUTES.gate;
-  return ROUTES.tickets;
+  return ROUTES.discover;
 }
 
 function safeNextPath(next: string | null): string | null {
@@ -59,12 +60,19 @@ export function AuthForm({
   const params = useSearchParams();
   const supabase = React.useMemo(() => createSupabaseBrowserClient(), []);
 
+  const isCustomer = variant === "customer";
   const isOrganizer = variant === "organizer";
 
-  const [mode, setMode] = React.useState<"signin" | "signup">("signin");
+  const [mode, setMode] = React.useState<"signin" | "signup">(() =>
+    params.get("signup") === "1" ? "signup" : "signin"
+  );
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [name, setName] = React.useState("");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [idType, setIdType] = React.useState<IdentityType>("NIC");
+  const [idNumber, setIdNumber] = React.useState("");
   const [orgName, setOrgName] = React.useState("");
   const [orgType, setOrgType] = React.useState<string>(CREATOR_TYPES[0].value);
   const [placesCatalog, setPlacesCatalog] = React.useState<{
@@ -82,6 +90,9 @@ export function AuthForm({
     const err = params.get("error");
     if (err === "window") {
       return "This gate session belongs to another browser window. Sign in again in this window.";
+    }
+    if (params.get("reason") === "idle") {
+      return "You were signed out after 1 hour of inactivity. Please sign in again.";
     }
     if (err) return "Authentication failed. Please sign in again.";
     return null;
@@ -149,6 +160,20 @@ export function AuthForm({
 
       await bindBrowserSession();
 
+      if (isCustomer && next?.startsWith("/checkout")) {
+        try {
+          const meRes = await fetch("/api/auth/me", { cache: "no-store", credentials: "include" });
+          const me = await meRes.json();
+          if (!me.profileComplete) {
+            router.push(`${ROUTES.profile}?next=${encodeURIComponent(next)}`);
+            router.refresh();
+            return;
+          }
+        } catch {
+          /* fall through to checkout */
+        }
+      }
+
       router.push(next ?? destinationFor(role));
       router.refresh();
     } catch (err) {
@@ -164,9 +189,42 @@ export function AuthForm({
     setError(null);
     setInfo(null);
 
+    const customerName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+    let customerIdentity: { idType: IdentityType; idNumber: string } | null = null;
+    if (isCustomer) {
+      if (!firstName.trim() || !lastName.trim()) {
+        setError("First name and last name are required.");
+        setLoading(false);
+        return;
+      }
+
+      const identityCheck = validateIdentity(idType, idNumber);
+      if (!identityCheck.ok) {
+        setError(identityCheck.error ?? "Enter a valid identity number.");
+        setLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/auth/check-identity", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idType, idNumber: identityCheck.normalized }),
+      });
+      const identityData = await res.json().catch(() => ({}));
+      if (!res.ok || !identityData.available) {
+        setError(identityData?.error ?? "That identity number is already linked to another account.");
+        setLoading(false);
+        return;
+      }
+      customerIdentity = {
+        idType,
+        idNumber: identityData.normalized ?? identityCheck.normalized,
+      };
+    }
+
     const metadata: Record<string, string> = {
-      name,
-      role: isOrganizer ? orgType : UserRole.CUSTOMER,
+      name: isOrganizer ? name : isCustomer ? customerName : name,
+      role: isOrganizer ? orgType : isCustomer ? UserRole.CUSTOMER : UserRole.SUPER_ADMIN,
     };
     if (isOrganizer) {
       metadata.orgType = orgType;
@@ -181,6 +239,12 @@ export function AuthForm({
         if (placesPick.subCategoryId) metadata.placesSubCategoryId = placesPick.subCategoryId;
         if (placesPick.tagIds.length) metadata.placesTagIds = JSON.stringify(placesPick.tagIds);
       }
+    } else if (customerIdentity) {
+      metadata.firstName = firstName.trim();
+      metadata.lastName = lastName.trim();
+      metadata.idType = customerIdentity.idType;
+      metadata.idNumber = customerIdentity.idNumber;
+      if (customerIdentity.idType === "NIC") metadata.nic = customerIdentity.idNumber;
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -188,7 +252,7 @@ export function AuthForm({
       password,
       options: {
         data: metadata,
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/?verified=1")}`,
       },
     });
     setLoading(false);
@@ -198,7 +262,13 @@ export function AuthForm({
     }
     if (data.session) {
       await bindBrowserSession();
-      router.push(next ?? (isOrganizer ? "/portal" : `${ROUTES.profile}?welcome=1`));
+      if (isOrganizer) {
+        router.push(next ?? "/portal");
+      } else if (next) {
+        router.push(next);
+      } else {
+        router.push(`${ROUTES.discover}?welcome=1`);
+      }
       router.refresh();
     } else {
       setInfo("Account created. Check your email to confirm, then sign in.");
@@ -216,11 +286,17 @@ export function AuthForm({
 
   const defaultSubtitle = isOrganizer
     ? mode === "signin"
-      ? "Event organizers, artist managers, artists & gate staff — sign in to your portal."
+      ? "Event organizers, artist managers, artists & gate staff - sign in to your portal."
       : "Choose your role: Event Organizer, Artist Manager, Artist, or Company / Venue Owner."
+    : next?.startsWith("/checkout")
+    ? mode === "signin"
+      ? "Sign in to complete your ticket purchase."
+      : "Create an account to buy tickets - you'll finish your profile next."
     : mode === "signin"
     ? "Welcome back. Sign in to buy tickets and view your wallet."
-    : "Join to buy tickets and keep them in your wallet.";
+    : "Create your account to buy tickets - we'll verify your identity and keep your data secure.";
+
+  const residency = RESIDENCY_OPTIONS.find((o) => o.value === idType) ?? RESIDENCY_OPTIONS[0];
 
   return (
     <div className="rounded-3xl border bg-card p-8 shadow-xl">
@@ -233,15 +309,84 @@ export function AuthForm({
       <form onSubmit={mode === "signin" ? handleSignIn : handleSignUp} className="mt-6 space-y-3">
         {mode === "signup" && (
           <>
-            <label className="block space-y-1.5 text-sm">
-              <span className="font-medium">Full name</span>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Jane Doe"
-                required
-              />
-            </label>
+            {isCustomer ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">First name</span>
+                  <Input
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Jane"
+                    required
+                  />
+                </label>
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">Last name</span>
+                  <Input
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Doe"
+                    required
+                  />
+                </label>
+                <div className="space-y-2 sm:col-span-2">
+                  <span className="text-sm font-medium">Are you a Sri Lankan resident?</span>
+                  <p className="text-xs text-muted-foreground">
+                  Your identification helps us securely verify your Entertain Passport.
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {RESIDENCY_OPTIONS.map((option) => (
+                      <label
+                        key={option.value}
+                        className={`flex cursor-pointer items-start gap-2 rounded-xl border px-3 py-2.5 text-sm ${
+                          idType === option.value ? "border-primary bg-primary/5" : "bg-background"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="residency"
+                          value={option.value}
+                          checked={idType === option.value}
+                          onChange={() => {
+                            setIdType(option.value);
+                            setIdNumber("");
+                          }}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                        />
+                        <span className="leading-snug">{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{residency.description}</p>
+                </div>
+                <label className="block space-y-1.5 text-sm sm:col-span-2">
+                  <span className="font-medium">{residency.fieldLabel}</span>
+                  <Input
+                    value={idNumber}
+                    onChange={(e) => setIdNumber(e.target.value.toUpperCase())}
+                    placeholder={residency.fieldPlaceholder}
+                    required
+                  />
+                </label>
+                <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 sm:col-span-2">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                  Your NIC or passport is securely encrypted and used only to verify your identity 
+                  and authenticate your Entertain Passport. We never misuse your personal data.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <label className="block space-y-1.5 text-sm">
+                <span className="font-medium">Full name</span>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Jane Doe"
+                  required
+                />
+              </label>
+            )}
 
             {isOrganizer && (
               <>

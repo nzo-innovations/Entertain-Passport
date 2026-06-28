@@ -48,7 +48,12 @@ export default async function GateEventPage({ params }: { params: { eventId: str
         )}
       </header>
 
-      <GateConsole eventId={event.id} eventTitle={event.title} initialStats={stats} />
+      <GateConsole
+        eventId={event.id}
+        eventTitle={event.title}
+        venueName={event.venue.name}
+        initialStats={stats}
+      />
     </div>
   );
 }

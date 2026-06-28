@@ -6,5 +6,5 @@ export function generatePassportNo(): string {
   return `EP-${part()}-${part()}`;
 }
 
-export const RFID_STATUSES = ["UNASSIGNED", "ACTIVE", "BLOCKED", "LOST"] as const;
-export type RfidStatus = (typeof RFID_STATUSES)[number];
+export const NFC_CARD_STATUSES = ["UNASSIGNED", "ACTIVE", "BLOCKED", "LOST"] as const;
+export type NfcCardStatus = (typeof NFC_CARD_STATUSES)[number];
